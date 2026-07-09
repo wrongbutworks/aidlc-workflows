@@ -2968,8 +2968,10 @@ export function loadStageGraph(): StageEntry[] {
   return parsed;
 }
 
-// Per-scope prose metadata read from each .claude/scopes/aidlc-<name>.md
-// frontmatter: name/depth/keywords/description (+ optional testStrategy).
+// Per-scope prose metadata read from each .claude/scopes/*.md frontmatter:
+// name/depth/keywords/description (+ optional testStrategy). Core scopes use
+// aidlc-<name>.md; plugin scopes use <plugin>-<name>.md, with the frontmatter
+// name matching the filename stem.
 // This is the depth/keywords/description half of a ScopeDefinition; the
 // EXECUTE/SKIP `.stages` half comes from the compiled grid. Cached.
 interface ScopeMetadata {
@@ -3113,11 +3115,12 @@ export function _resetStageGraphForTests(): void {
 }
 
 // Canonical scope names derived from .claude/scopes/*.md presence (via
-// loadScopeMapping's metadata source). Dropping a new aidlc-<name>.md file
-// automatically flows through every tool that validates scope arguments —
-// no code change. Sorted alphabetically so error-message enumeration is
-// deterministic regardless of file-read order. (Under the AIDLC_SCOPE_MAPPING
-// test seam the names come from the injected JSON keys instead.)
+// loadScopeMapping's metadata source). Dropping a new core aidlc-<name>.md file
+// or plugin <plugin>-<name>.md file automatically flows through every tool that
+// validates scope arguments — no code change. Sorted alphabetically so
+// error-message enumeration is deterministic regardless of file-read order.
+// (Under the AIDLC_SCOPE_MAPPING test seam the names come from the injected JSON
+// keys instead.)
 let _validScopes: ReadonlySet<string> | null = null;
 
 export function validScopes(): ReadonlySet<string> {

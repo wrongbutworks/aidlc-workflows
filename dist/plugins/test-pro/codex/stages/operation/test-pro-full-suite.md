@@ -27,6 +27,7 @@ sensors:
   - upstream-coverage
 scopes:
   - enterprise
+  - test-pro-validation
 when:
   producer-in-plan: test-pro-regression-suite
 inputs: Deployed environment coordinates, the construction regression suite, and integration results

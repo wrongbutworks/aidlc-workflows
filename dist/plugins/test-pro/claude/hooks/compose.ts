@@ -13,8 +13,9 @@
 //   PROJECT_DIR   ← CLAUDE_PROJECT_DIR | AIDLC_PROJECT_DIR | PWD  (Codex unsets the first)
 //   HARNESS_LEAF  ← AIDLC_HARNESS_DIR  (".claude" default)
 //
-// Steps: (1) copy new stages/sensors/tools with {{HARNESS_DIR}} substitution,
-// no-clobber; (2) merge contributions (produces/consumes/sensors set-union +
+// Steps: (1) copy new stages/scopes/agents/knowledge/sensors/tools with
+// {{HARNESS_DIR}} substitution, no-clobber; (2) merge contributions
+// (produces/consumes/sensors set-union +
 // prose fragments spliced) into stage SOURCE — durable across recompiles;
 // (3) recompile the graph. Idempotent + short-circuits when nothing changed.
 
@@ -178,7 +179,7 @@ function walk(dir: string): string[] {
 // No-clobber copy of one tree into another, with {{HARNESS_DIR}} substitution on
 // .md prose. NEVER overwrites an existing dest (portable no-clobber — the point
 // of the former `cp -n`, done right). Returns true if anything was written.
-// `kind` labels the tree (stages/sensors/tools) for the collision drop-log: a
+// `kind` labels the tree for the collision drop-log: a
 // dest that already exists with DIFFERENT content is a real collision (a plugin
 // trying to ship a file that shadows core or another plugin) and is dropped-with-
 // log — silently skipping it made a plugin "override" a no-op with no evidence
@@ -421,7 +422,13 @@ function spliceFragment(content: string, f: Fragment, target: string): string {
 let changed = false;
 try {
   // 1. Copy NEW primitives (no-clobber, token-substituted).
+  // Plugin scopes and agents use the plugin prefix in place of core's `aidlc-`
+  // prefix: scopes/<plugin>-<name>.md and agents/<plugin>-<role>-agent.md, with
+  // the filename stem equal to frontmatter `name`.
   changed = copyTreeNoClobber(join(PLUGIN_ROOT, "stages"), STAGES_DIR, "stage") || changed;
+  changed = copyTreeNoClobber(join(PLUGIN_ROOT, "scopes"), join(HARNESS_DIR, "scopes"), "scopes") || changed;
+  changed = copyTreeNoClobber(join(PLUGIN_ROOT, "agents"), join(HARNESS_DIR, "agents"), "agents") || changed;
+  changed = copyTreeNoClobber(join(PLUGIN_ROOT, "knowledge"), join(HARNESS_DIR, "knowledge"), "knowledge") || changed;
   changed = copyTreeNoClobber(join(PLUGIN_ROOT, "sensors"), join(HARNESS_DIR, "sensors"), "sensor") || changed;
   changed = copyTreeNoClobber(join(PLUGIN_ROOT, "tools"), join(HARNESS_DIR, "tools"), "tool") || changed;
 

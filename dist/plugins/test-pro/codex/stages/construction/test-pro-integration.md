@@ -7,7 +7,8 @@ phase: construction
 execution: CONDITIONAL
 condition: Execute once after build-and-test when the test-pro plugin is active and the build spans more than one unit of work.
 lead_agent: aidlc-quality-agent
-support_agents: []
+support_agents:
+  - test-pro-metrics-agent
 mode: inline
 produces:
   - test-pro-integration-test-plan
@@ -27,6 +28,7 @@ scopes:
   - enterprise
   - feature
   - mvp
+  - test-pro-validation
   - workshop
 inputs: All per-unit build/test outputs and the regression suite from build-and-test
 outputs: test-pro-integration-test-plan.md, test-pro-integration-test-results.md, test-pro-cross-unit-contract-matrix.md (under this stage's record dir, engine-resolved)
@@ -45,6 +47,7 @@ the cross-unit seams the per-unit tests structurally cannot see.
 ### Step 1: Load Agent Personas
 
 Load aidlc-quality-agent persona from `agents/aidlc-quality-agent.md` and knowledge from `{{HARNESS_DIR}}/knowledge/aidlc-quality-agent/`.
+Load test-pro-metrics-agent support persona from `agents/test-pro-metrics-agent.md` and knowledge from `{{HARNESS_DIR}}/knowledge/test-pro-metrics-agent/`.
 
 ### Step 2: Read All Per-Unit Outputs
 

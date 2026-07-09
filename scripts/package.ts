@@ -848,7 +848,12 @@ function buildPluginProjection(pluginName: string, harnessName: string, outDir: 
   if (!target) throw new Error(`no plugin target for harness "${harnessName}" (missing manifest)`);
   const { manifestDir, harnessLeaf, kind } = target;
   const templateHooks = join(REPO_ROOT, "scripts", "plugin-hooks-template");
-  const contentDirs = ["stages", "sensors", "tools", "contributions"];
+  // Primitive content copied verbatim into the host plugin projection. Core
+  // scope files keep the `aidlc-` prefix; plugin scope files use
+  // `<plugin>-<name>.md` instead, with frontmatter `name` equal to the stem.
+  // Plugin agent files follow `<plugin>-<role>-agent.md` with the same stem =
+  // frontmatter-name convention.
+  const contentDirs = ["stages", "sensors", "tools", "contributions", "scopes", "agents", "knowledge"];
 
   if (existsSync(outDir)) rmSync(outDir, { recursive: true, force: true });
   mkdirSync(outDir, { recursive: true });
@@ -916,6 +921,8 @@ function buildPluginProjection(pluginName: string, harnessName: string, outDir: 
   }
 
   // 4. Copy plugin content verbatim (stages keep number/name/plugin/when).
+  // walk() is recursive, so nested phase dirs and knowledge/<agent-slug>/ trees
+  // are preserved without special cases.
   for (const dir of contentDirs) {
     const srcDir = join(pluginSrc, dir);
     if (!existsSync(srcDir)) continue;

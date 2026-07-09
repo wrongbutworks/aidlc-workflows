@@ -17,7 +17,7 @@
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -43,11 +43,33 @@ function graph(projectDir: string): Array<Record<string, any>> {
 function stage(projectDir: string, slug: string): Record<string, any> | undefined {
   return graph(projectDir).find((s) => s.slug === slug);
 }
+function stageSourcePath(projectDir: string, phase: string, slug: string): string {
+  return join(projectDir, ".claude", "aidlc-common", "stages", phase, `${slug}.md`);
+}
 function stageBody(projectDir: string, phase: string, slug: string): string {
-  return readFileSync(
-    join(projectDir, ".claude", "aidlc-common", "stages", phase, `${slug}.md`),
-    "utf-8"
-  );
+  return readFileSync(stageSourcePath(projectDir, phase, slug), "utf-8");
+}
+function bodyAfterFrontmatter(raw: string): string {
+  return raw.match(/^---\r?\n[\s\S]*?\r?\n---\r?\n?([\s\S]*)$/)?.[1] ?? "";
+}
+function assertNonEmptyStageBody(file: string): void {
+  const body = bodyAfterFrontmatter(readFileSync(file, "utf-8"));
+  if (body.trim().length === 0) {
+    throw new Error(
+      `${file}: stage body is empty - the stage is behaviorally dead; did a transform drop everything after the closing ---?`
+    );
+  }
+}
+function hookDrops(projectDir: string): string {
+  let drops = "";
+  const hd = join(projectDir, "aidlc", "spaces", "default", "intents", ".aidlc-hooks-health");
+  if (!existsSync(hd)) return drops;
+  for (const f of readdirSync(hd)) {
+    if (f.startsWith("plugin-compose") && f.endsWith(".drops")) {
+      drops += readFileSync(join(hd, f), "utf-8");
+    }
+  }
+  return drops;
 }
 
 describe("t188 plugin compose — emit + compose the contribution seam", () => {
@@ -100,6 +122,12 @@ describe("t188 plugin compose — emit + compose the contribution seam", () => {
     expect(existsSync(join(PLUGIN_CLAUDE_COMMITTED, "hooks", "hooks.json"))).toBe(true);
   });
 
+  test("packager emits scopes, agents, and knowledge in the Claude projection", () => {
+    expect(existsSync(join(PLUGIN_CLAUDE_COMMITTED, "scopes", "test-pro-validation.md"))).toBe(true);
+    expect(existsSync(join(PLUGIN_CLAUDE_COMMITTED, "agents", "test-pro-metrics-agent.md"))).toBe(true);
+    expect(existsSync(join(PLUGIN_CLAUDE_COMMITTED, "knowledge", "test-pro-metrics-agent", "methodology.md"))).toBe(true);
+  });
+
   test("all four harness projections emit", () => {
     for (const h of ["claude", "codex", "kiro", "kiro-ide"]) {
       expect(existsSync(join(REPO_ROOT, "dist", "plugins", PLUGIN, h))).toBe(true);
@@ -112,6 +140,21 @@ describe("t188 plugin compose — emit + compose the contribution seam", () => {
     expect(slugs).toContain("test-pro-integration");
     expect(slugs).toContain("test-pro-full-suite");
     expect(graph(project).length).toBe(34); // 32 core + 2 test-pro
+  });
+
+  test("new plugin scopes, agents, and knowledge compose into the harness tree", () => {
+    expect(existsSync(join(project, ".claude", "scopes", "test-pro-validation.md"))).toBe(true);
+    expect(existsSync(join(project, ".claude", "agents", "test-pro-metrics-agent.md"))).toBe(true);
+    expect(existsSync(join(project, ".claude", "knowledge", "test-pro-metrics-agent", "methodology.md"))).toBe(true);
+  });
+
+  test("composed plugin stage bodies are not empty", () => {
+    for (const [phase, slug] of [
+      ["construction", "test-pro-integration"],
+      ["operation", "test-pro-full-suite"],
+    ] as const) {
+      assertNonEmptyStageBody(stageSourcePath(project, phase, slug));
+    }
   });
 
   // --- Contribution seam: structural surfaces ---
@@ -314,6 +357,76 @@ describe("t188 plugin compose — emit + compose the contribution seam", () => {
     const body = readFileSync(join(proj, ".claude", "aidlc-common", "stages", "construction", "build-and-test.md"), "utf-8");
     expect(body).not.toContain("SYN-COLLIDE OVERRIDE");
     expect(drops).toContain("collides");
+  });
+
+  test("scope, agent, and knowledge collisions are no-clobber and drop-logged", () => {
+    const collideProj = mkdtempSync(join(tmp, "primitive-collide-"));
+    cpSync(CLAUDE_DIST, join(collideProj, ".claude"), { recursive: true });
+
+    const scopePath = join(collideProj, ".claude", "scopes", "test-pro-validation.md");
+    const seededScope = [
+      "---",
+      "name: test-pro-validation",
+      "plugin: preseed",
+      "depth: Standard",
+      "keywords:",
+      "  - seeded-validation",
+      "description: Preseeded validation scope",
+      "---",
+      "",
+      "# Preseeded validation scope",
+      "",
+      "This file must survive plugin compose.",
+      "",
+    ].join("\n");
+    writeFileSync(scopePath, seededScope);
+
+    const agentPath = join(collideProj, ".claude", "agents", "test-pro-metrics-agent.md");
+    const seededAgent = [
+      "---",
+      "name: test-pro-metrics-agent",
+      "display_name: Preseeded Metrics Agent",
+      "plugin: preseed",
+      "examples:",
+      "  - seeded-metrics.md",
+      "description: Preseeded metrics persona",
+      "disallowedTools: Task",
+      "model: sonnet",
+      "---",
+      "",
+      "# Preseeded Metrics Agent",
+      "",
+      "This valid agent file must survive plugin compose.",
+      "",
+    ].join("\n");
+    writeFileSync(agentPath, seededAgent);
+
+    const knowledgePath = join(collideProj, ".claude", "knowledge", "test-pro-metrics-agent", "methodology.md");
+    mkdirSync(dirname(knowledgePath), { recursive: true });
+    const seededKnowledge = "# Preseeded methodology\n\nThis file must survive plugin compose.\n";
+    writeFileSync(knowledgePath, seededKnowledge);
+
+    const compose = spawnSync(BUN, [join(pluginBuilt, "hooks", "compose.ts")], {
+      cwd: collideProj,
+      encoding: "utf-8",
+      timeout: TIMEOUT_MS - 5_000,
+      env: {
+        ...process.env,
+        CLAUDE_PLUGIN_ROOT: pluginBuilt,
+        CLAUDE_PROJECT_DIR: collideProj,
+        AIDLC_HARNESS_DIR: ".claude",
+      },
+    });
+    if (compose.status !== 0) throw new Error(`compose.ts failed: ${compose.stderr}`);
+
+    expect(readFileSync(scopePath, "utf-8")).toBe(seededScope);
+    expect(readFileSync(agentPath, "utf-8")).toBe(seededAgent);
+    expect(readFileSync(knowledgePath, "utf-8")).toBe(seededKnowledge);
+
+    const drops = hookDrops(collideProj);
+    expect(drops).toContain(`scopes "test-pro-validation.md" collides`);
+    expect(drops).toContain(`agents "test-pro-metrics-agent.md" collides`);
+    expect(drops).toContain(`knowledge "test-pro-metrics-agent/methodology.md" collides`);
   });
 
   // --- Silent-failure seams (round-5): fence-awareness, leftover blocks, BOM ---

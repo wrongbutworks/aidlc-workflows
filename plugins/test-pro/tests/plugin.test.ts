@@ -12,7 +12,7 @@
 
 import { describe, expect, test } from "bun:test";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   parseStageFrontmatter,
@@ -43,12 +43,16 @@ function walk(dir: string): string[] {
   return out;
 }
 
-// The real agent roster (dist), plus the reserved orchestrator pseudo-agent.
+// The real core agent roster (dist), plus this plugin's own agents/ bucket and
+// the reserved orchestrator pseudo-agent. A plugin-shipped stage may name a
+// plugin-shipped persona as lead_agent/support_agents at author-validation time.
 function agentRoster(): string[] {
-  const slugs = readdirSync(AGENTS_DIR)
+  const coreSlugs = readdirSync(AGENTS_DIR)
     .filter((f) => f.endsWith(".md"))
     .map((f) => f.replace(/\.md$/, ""));
-  return [...slugs, "orchestrator"];
+  const pluginSlugs = walk(join(PLUGIN_ROOT, "agents"))
+    .map((f) => basename(f, ".md"));
+  return [...new Set([...coreSlugs, ...pluginSlugs, "orchestrator"])].sort();
 }
 
 // Core stage slugs (contribution targets must resolve to one of these).
@@ -58,6 +62,10 @@ function coreStageSlugs(): Set<string> {
 
 const pluginStageFiles = walk(join(PLUGIN_ROOT, "stages"));
 const contributionFiles = walk(join(PLUGIN_ROOT, "contributions"));
+
+function stageBodyAfterFrontmatter(raw: string): string {
+  return raw.match(/^---\r?\n[\s\S]*?\r?\n---\r?\n?([\s\S]*)$/)?.[1] ?? "";
+}
 
 describe(`${PLUGIN_NAME} plugin — own content validation`, () => {
   test("has stages and contributions to validate", () => {
@@ -85,6 +93,16 @@ describe(`${PLUGIN_NAME} plugin — own content validation`, () => {
       test(`${name} declares plugin: ${PLUGIN_NAME}`, () => {
         const fm = parseStageFrontmatter(readFileSync(file, "utf-8"));
         expect(fm.plugin).toBe(PLUGIN_NAME);
+      });
+
+      test(`${name} has a non-empty body`, () => {
+        const body = stageBodyAfterFrontmatter(readFileSync(file, "utf-8"));
+        if (body.trim().length === 0) {
+          throw new Error(
+            `${name}: stage body is empty - the stage is behaviorally dead; did a transform drop everything after the closing ---?`
+          );
+        }
+        expect(body.trim().length).toBeGreaterThan(0);
       });
 
       test(`${name} produces only ${PLUGIN_NAME}- namespaced artifacts`, () => {
