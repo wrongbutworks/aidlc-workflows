@@ -265,11 +265,35 @@ describe("t62 stage-schema — validateStageFrontmatter (migrated from t62-stage
     );
   });
 
-  // number / name / bundle — optional plugin-mechanism metadata, accepted when
+  // number / name / plugin — optional plugin-mechanism metadata, accepted when
   // shape-valid (previously rejected as unknown keys).
-  test("number/name/bundle: valid values pass", () => {
-    const r = validateStageFrontmatter({ ...fixture(), number: "4.50", name: "My Stage", bundle: "test-pro" });
+  test("number/name/plugin: valid values pass", () => {
+    const r = validateStageFrontmatter({ ...fixture(), number: "4.50", name: "My Stage", plugin: "test-pro" });
     expect(r.valid).toBe(true);
+    if (!r.valid) return;
+    expect((r.data as unknown as Record<string, unknown>).plugin).toBe("test-pro");
+  });
+
+  test("bundle deprecated alias: valid value passes and normalizes to plugin", () => {
+    const r = validateStageFrontmatter({ ...fixture(), bundle: "test-pro" });
+    expect(r.valid).toBe(true);
+    if (!r.valid) return;
+    expect((r.data as unknown as Record<string, unknown>).plugin).toBe("test-pro");
+    expect("bundle" in r.data).toBe(false);
+  });
+
+  test("plugin + identical bundle alias: accepted and normalizes to plugin", () => {
+    const r = validateStageFrontmatter({ ...fixture(), plugin: "test-pro", bundle: "test-pro" });
+    expect(r.valid).toBe(true);
+    if (!r.valid) return;
+    expect((r.data as unknown as Record<string, unknown>).plugin).toBe("test-pro");
+    expect("bundle" in r.data).toBe(false);
+  });
+
+  test("plugin + different bundle alias: rejected", () => {
+    expect(errs({ ...fixture(), plugin: "test-pro", bundle: "other-pro" })).toContain(
+      "plugin and bundle (deprecated alias) disagree",
+    );
   });
 
   test("number: wrong shape rejected", () => {

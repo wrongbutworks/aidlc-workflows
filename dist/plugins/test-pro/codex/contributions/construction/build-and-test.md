@@ -1,6 +1,6 @@
 ---
 target: build-and-test
-bundle: test-pro
+plugin: test-pro
 adds:
   produces:
     - test-pro-branch-coverage-instructions
@@ -94,7 +94,7 @@ artifacts land in):
 
 ## fragment: in:Sensors
 
-The test-pro bundle wires two ADVISORY sensors onto this stage:
+The test-pro plugin wires two ADVISORY sensors onto this stage:
 `coverage-threshold` (reads `test-pro-coverage-summary.json`) and
 `requirement-coverage` (reads `test-pro-test-results.json`). They REPORT against
 the targets — they do not block the build (the framework has no blocking sensor

@@ -102,7 +102,7 @@ A contribution declares **structural** additions (`adds.produces` / `consumes` /
 like `after-step:9`, `in:Sensors`). At compose:
 - **structural surfaces** are set-unioned into the target stage's compiled node;
 - **prose fragments** are spliced into the target stage's body at their anchor,
-  ordered by `(order, bundle)`.
+  ordered by `(order, plugin)`.
 
 Both halves run in the single portable `compose.ts` hook (bun).
 
@@ -147,7 +147,7 @@ for now; the `when:` line is authored for forward-compatibility.
 ### Testing this plugin
 `tests/plugin.test.ts` validates test-pro's **own content** with the framework's
 real validators — every stage passes `validateStageFrontmatter` against the real
-agent roster, slugs match filenames, `bundle:` is declared, artifacts are
+agent roster, slugs match filenames, `plugin:` is declared, artifacts are
 namespaced, and every contribution targets a real core stage:
 ```bash
 bun test plugins/test-pro/tests/plugin.test.ts

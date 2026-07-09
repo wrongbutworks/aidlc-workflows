@@ -1,6 +1,6 @@
 ---
 target: performance-validation
-bundle: test-pro
+plugin: test-pro
 adds:
   produces:
     - test-pro-load-regression-matrix

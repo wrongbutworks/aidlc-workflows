@@ -1,6 +1,6 @@
 ---
 target: nfr-requirements
-bundle: test-pro
+plugin: test-pro
 adds:
   produces:
     - test-pro-testability-requirements

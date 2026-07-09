@@ -6,7 +6,7 @@
 // severity yet, so a failure is reported, not enforced. Targets travel INSIDE
 // the JSON (`targets`), falling back to embedded defaults — so this tool needs
 // no node-derived dispatcher flag, only the --output-path the dispatcher always
-// passes. Shipped to .claude/tools/ via the bundle's contributes.tools.
+// passes. Shipped to .claude/tools/ via the plugin's contributes.tools.
 import { existsSync, readFileSync } from "node:fs";
 
 // Self-contained — no import of the framework's aidlc-lib (a plugin tool ships

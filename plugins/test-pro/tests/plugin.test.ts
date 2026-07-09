@@ -82,9 +82,9 @@ describe(`${PLUGIN_NAME} plugin — own content validation`, () => {
         expect(fm.slug).toBe(name.replace(/\.md$/, ""));
       });
 
-      test(`${name} declares bundle: ${PLUGIN_NAME}`, () => {
+      test(`${name} declares plugin: ${PLUGIN_NAME}`, () => {
         const fm = parseStageFrontmatter(readFileSync(file, "utf-8"));
-        expect(fm.bundle).toBe(PLUGIN_NAME);
+        expect(fm.plugin).toBe(PLUGIN_NAME);
       });
 
       test(`${name} produces only ${PLUGIN_NAME}- namespaced artifacts`, () => {
@@ -110,8 +110,8 @@ describe(`${PLUGIN_NAME} plugin — own content validation`, () => {
         expect(cores.has(target!)).toBe(true);
       });
 
-      test(`${name} declares bundle: ${PLUGIN_NAME}`, () => {
-        expect(fm.match(/^bundle:\s*(.+)$/m)?.[1].trim()).toBe(PLUGIN_NAME);
+      test(`${name} declares plugin: ${PLUGIN_NAME}`, () => {
+        expect(fm.match(/^plugin:\s*(.+)$/m)?.[1].trim()).toBe(PLUGIN_NAME);
       });
 
       test(`${name} adds.produces are ${PLUGIN_NAME}- namespaced`, () => {

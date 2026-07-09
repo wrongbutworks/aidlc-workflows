@@ -2,7 +2,7 @@
 slug: test-pro-full-suite
 number: 4.45
 name: Full Test Suite Execution
-bundle: test-pro
+plugin: test-pro
 phase: operation
 execution: CONDITIONAL
 condition: Execute under the enterprise scope when the regression suite is on this scope's resolved plan, after deployment.

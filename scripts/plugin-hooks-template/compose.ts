@@ -362,29 +362,29 @@ function hashProse(s: string): string {
   return (h >>> 0).toString(16).padStart(8, "0");
 }
 
-interface Fragment { bundle: string; anchor: string; order: number; prose: string; }
+interface Fragment { plugin: string; anchor: string; order: number; prose: string; }
 
 // Splice ONE fragment into stage source, idempotently and order-deterministically.
-// Each spliced block is delimited by an open sentinel carrying (bundle, anchor,
+// Each spliced block is delimited by an open sentinel carrying (plugin, anchor,
 // order, content-hash) and a matching close sentinel. Because blocks are
 // self-delimiting we can (a) skip when the same block is already present, (b)
 // replace it when only the hash changed (upgrade), and (c) insert a NEW block at
-// its correct (order, bundle) slot among peer plugin blocks at the same anchor —
-// so plugins composing in separate hook runs still interleave by (order, bundle),
+// its correct (order, plugin) slot among peer plugin blocks at the same anchor —
+// so plugins composing in separate hook runs still interleave by (order, plugin),
 // never by hook-firing order. Never relies on "the next heading" to bound a block.
 function spliceFragment(content: string, f: Fragment, target: string): string {
   const hash = hashProse(f.prose);
-  const bE = escapeRegExp(f.bundle), aE = escapeRegExp(f.anchor);
+  const pE = escapeRegExp(f.plugin), aE = escapeRegExp(f.anchor);
   // The close marker carries the SAME content hash as the open, so the block's
   // boundary is content-specific: a close-marker-lookalike line inside the prose
   // (which lacks the exact hash) can't be mistaken for the real close on an
   // upgrade re-splice (round-5 — the old hashless close matched the first
   // occurrence, so prose containing the marker corrupted the block).
-  const closeOf = (h: string) => `<!-- /plugin:${f.bundle}:${f.anchor}:${f.order}:${h} -->`;
-  const block = `<!-- plugin:${f.bundle}:${f.anchor}:${f.order}:${hash} -->\n${f.prose}\n${closeOf(hash)}`;
+  const closeOf = (h: string) => `<!-- /plugin:${f.plugin}:${f.anchor}:${f.order}:${h} -->`;
+  const block = `<!-- plugin:${f.plugin}:${f.anchor}:${f.order}:${hash} -->\n${f.prose}\n${closeOf(hash)}`;
 
   // Present already? Skip on hash match; replace the whole block on hash change.
-  const mine = content.match(new RegExp(`<!-- plugin:${bE}:${aE}:${f.order}:([0-9a-f]+) -->`));
+  const mine = content.match(new RegExp(`<!-- plugin:${pE}:${aE}:${f.order}:([0-9a-f]+) -->`));
   if (mine) {
     if (mine[1] === hash) return content;
     const start = mine.index!;
@@ -394,17 +394,17 @@ function spliceFragment(content: string, f: Fragment, target: string): string {
     return content.slice(0, start) + block + content.slice(end + oldClose.length);
   }
 
-  // Insert at the ordered slot among peer plugin blocks at this anchor (any bundle).
-  const peers: Array<{ order: number; bundle: string; start: number; end: number }> = [];
+  // Insert at the ordered slot among peer plugin blocks at this anchor (any plugin).
+  const peers: Array<{ order: number; plugin: string; start: number; end: number }> = [];
   for (const m of content.matchAll(new RegExp(`<!-- plugin:([^:]+):${aE}:(\\d+):([0-9a-f]+) -->`, "g"))) {
-    const pBundle = m[1], pOrder = Number(m[2]), pHash = m[3];
-    const close = `<!-- /plugin:${pBundle}:${f.anchor}:${pOrder}:${pHash} -->`;
+    const peerPlugin = m[1], pOrder = Number(m[2]), pHash = m[3];
+    const close = `<!-- /plugin:${peerPlugin}:${f.anchor}:${pOrder}:${pHash} -->`;
     const cIdx = content.indexOf(close, m.index!);
     if (cIdx === -1) continue;
-    peers.push({ order: pOrder, bundle: pBundle, start: m.index!, end: cIdx + close.length });
+    peers.push({ order: pOrder, plugin: peerPlugin, start: m.index!, end: cIdx + close.length });
   }
   if (peers.length > 0) {
-    const after = peers.find((p) => p.order > f.order || (p.order === f.order && p.bundle.localeCompare(f.bundle) > 0));
+    const after = peers.find((p) => p.order > f.order || (p.order === f.order && p.plugin.localeCompare(f.plugin) > 0));
     if (after) return content.slice(0, after.start) + block + "\n\n" + content.slice(after.start);
     const lastEnd = Math.max(...peers.map((p) => p.end));
     return content.slice(0, lastEnd) + "\n\n" + block + content.slice(lastEnd);
@@ -431,7 +431,7 @@ try {
   const requiredSectionsSafe = await installedSchemaAccepts("required_sections", ["Probe Section"]);
   const contribRoot = join(PLUGIN_ROOT, "contributions");
   // Fragment keys seen across ALL contribution files this run, so a same
-  // (target, bundle, anchor, order) arriving from a SECOND file drops-with-log
+  // (target, plugin, anchor, order) arriving from a SECOND file drops-with-log
   // rather than silently last-writer-winning via the hash-upgrade path (round-3).
   const seenFragKeys = new Set<string>();
   for (const phase of existsSync(contribRoot) ? readdirSync(contribRoot) : []) {
@@ -453,11 +453,17 @@ try {
       // contribution — log it (a present-but-unknown target is already logged
       // below; a missing one was a silent bare continue).
       if (!target) { recordDrop(`contribution "${file}" has no parseable frontmatter target: — skipped (check for a BOM, a leading blank line, or a missing target: key)`); continue; }
-      const bundle = fm.match(/^bundle:\s*(.+)$/m)?.[1].trim() ?? "";
-      // `:` is the fragment-sentinel delimiter (<!-- plugin:bundle:anchor:order -->),
-      // so a bundle containing `:` would break the peer-block scan's `[^:]+` and
+      const pluginField = fm.match(/^plugin:\s*(.+)$/m)?.[1].trim() ?? "";
+      const bundleAlias = fm.match(/^bundle:\s*(.+)$/m)?.[1].trim() ?? "";
+      if (pluginField && bundleAlias && pluginField !== bundleAlias) {
+        recordDrop(`contribution "${file}" has conflicting plugin "${pluginField}" and bundle (deprecated alias) "${bundleAlias}"; skipped`);
+        continue;
+      }
+      const plugin = pluginField || bundleAlias;
+      // `:` is the fragment-sentinel delimiter (<!-- plugin:<plugin>:anchor:order -->),
+      // so a plugin containing `:` would break the peer-block scan's `[^:]+` and
       // silently misorder splices. Reject it up front (round-6).
-      if (bundle.includes(":")) { recordDrop(`contribution "${file}" has an invalid bundle "${bundle}" (must not contain ':'); skipped`); continue; }
+      if (plugin.includes(":")) { recordDrop(`contribution "${file}" has an invalid plugin "${plugin}" (must not contain ':'); skipped`); continue; }
       const stageFile = findStageFile(target);
       if (!stageFile) { recordDrop(`contribution "${file}" targets missing stage "${target}"`); continue; }
 
@@ -583,7 +589,7 @@ try {
         const queue = blocksByAnchor.get(meta.anchor);
         const prose = (queue && queue.length > 0 ? queue.shift()! : "").replaceAll("{{HARNESS_DIR}}", HARNESS_LEAF);
         if (!prose) { recordDrop(`contribution to ${target}: fragment anchor "${meta.anchor}" order ${meta.order} has no matching "## fragment: ${meta.anchor}" prose block; dropped`); continue; }
-        frags.push({ ...meta, bundle, prose });
+        frags.push({ ...meta, plugin, prose });
       }
       // Leftover body blocks with no matching frontmatter entry are dropped-with-
       // log — the "or vice versa" half the prior comment promised but never did
@@ -594,16 +600,16 @@ try {
         }
       }
 
-      // Splice each fragment at its ordered (order, bundle) slot. A same
-      // (target, bundle, anchor, order) collision — whether within this file OR
+      // Splice each fragment at its ordered (order, plugin) slot. A same
+      // (target, plugin, anchor, order) collision — whether within this file OR
       // from an earlier contribution file this run — drops-with-log rather than
       // silently overwriting (the hash-upgrade path would otherwise let a second
       // file replace the first, winner decided by readdir order). Aligned with
       // the "collision is an error" doc claim.
-      const ordered = [...frags].sort((a, b) => a.order - b.order || a.bundle.localeCompare(b.bundle));
+      const ordered = [...frags].sort((a, b) => a.order - b.order || a.plugin.localeCompare(b.plugin));
       for (const f of ordered) {
-        const key = `${target}:${f.bundle}:${f.anchor}:${f.order}`;
-        if (seenFragKeys.has(key)) { recordDrop(`contribution to ${target}: duplicate fragment ${f.bundle}:${f.anchor}:${f.order} (same bundle/anchor/order, possibly across files); dropped`); continue; }
+        const key = `${target}:${f.plugin}:${f.anchor}:${f.order}`;
+        if (seenFragKeys.has(key)) { recordDrop(`contribution to ${target}: duplicate fragment ${f.plugin}:${f.anchor}:${f.order} (same plugin/anchor/order, possibly across files); dropped`); continue; }
         seenFragKeys.add(key);
         stageContent = spliceFragment(stageContent, f, target);
       }

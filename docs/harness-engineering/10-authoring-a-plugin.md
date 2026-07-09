@@ -96,6 +96,8 @@ A plugin stage is an ordinary stage file (see
 - Any artifact it `produces:` must be prefixed `<plugin>-` (e.g.
   `test-pro-integration-test-results`).
 
+`bundle:` is still accepted as a deprecated read-side alias for `plugin:`, but new plugin trees should write `plugin:`.
+
 Stage **identity is the slug**, everywhere that matters (edges, jumps,
 resolution). The `number:` is a **display hint** only — it orders the stage in
 status output and the SKILL.md stage table, but a stage's graph position comes
@@ -177,14 +179,14 @@ marks what the compose hook merges today vs. designed-but-deferred (mirrors doc 
 | `in:<Compartment>` | at the end of the named `## <Compartment>` block (e.g. `in:Sensors`) | ✅ |
 | `after-questions`  | after the questions-generating step                                | ⏳ not implemented — `locateAnchor` has no case; drops "unknown anchor". Use `after-step:<n>`. |
 
-Fragments are ordered deterministically by `(order, bundle)`. A same
-`(bundle, anchor, order)` collision — within one file or across two contribution
+Fragments are ordered deterministically by `(order, plugin)`. A same
+`(plugin, anchor, order)` collision — within one file or across two contribution
 files this run — is **dropped-with-log** (not last-writer-wins). When two
 *different* plugins contribute to the same stage, their structural additions
 set-union and their fragments interleave by this same ordering — genuinely merged.
 
 Each spliced fragment is wrapped in a sentinel comment carrying a content hash
-(`<!-- plugin:<bundle>:<anchor>:<order>:<hash> --> … <!-- /plugin:… -->`), which
+(`<!-- plugin:<plugin>:<anchor>:<order>:<hash> --> … <!-- /plugin:… -->`), which
 is how re-composing stays idempotent and an upgraded fragment replaces its prior
 block. Two authoring rules follow from that:
 

@@ -915,7 +915,7 @@ function buildPluginProjection(pluginName: string, harnessName: string, outDir: 
     );
   }
 
-  // 4. Copy plugin content verbatim (stages keep number/name/bundle/when).
+  // 4. Copy plugin content verbatim (stages keep number/name/plugin/when).
   for (const dir of contentDirs) {
     const srcDir = join(pluginSrc, dir);
     if (!existsSync(srcDir)) continue;

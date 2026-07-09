@@ -3292,6 +3292,14 @@ export function parseStageFrontmatter(
     obj[key] = scalarField(fm, key);
   }
 
+  // Canonical ownership key is `plugin:`. Keep a raw `bundle:` value when it is
+  // authored so validateStageFrontmatter can reject plugin/bundle disagreement,
+  // but make legacy alias-only files available to downstream parse callers as
+  // `plugin` immediately. emitStageFrontmatter only writes `plugin:`.
+  if (!("plugin" in obj) && "bundle" in obj) {
+    obj.plugin = obj.bundle;
+  }
+
   // Required string-array fields must be PRESENT in the object even
   // when empty — stage-schema.ts rejects absent required fields with
   // "missing required field". listField returns [] when its block
@@ -3583,9 +3591,11 @@ function parseMemoryEntryLine(trimmed: string): {
 }
 
 // emitStageFrontmatter is the inverse — turns a StageFrontmatter-shaped
-// object back into YAML bytes. Symmetric with parseStageFrontmatter:
-// parse → emit → parse yields the same object. Field order is pinned
-// to stage-definition.md:84-110's worked example so diffs stay stable.
+// object back into YAML bytes. Symmetric with parseStageFrontmatter for
+// canonical keys: parse → emit → parse yields the same object, except deprecated
+// aliases such as `bundle:` are written back as their canonical field. Field
+// order is pinned to stage-definition.md:84-110's worked example so diffs stay
+// stable.
 export function emitStageFrontmatter(obj: Record<string, unknown>): string {
   const needsQuote = (v: string): boolean => /[:#]|^\s|\s$/.test(v);
   const emitScalar = (v: string): string =>
@@ -3593,6 +3603,9 @@ export function emitStageFrontmatter(obj: Record<string, unknown>): string {
 
   const FIELD_ORDER = [
     "slug",
+    "number",
+    "name",
+    "plugin",
     "phase",
     "execution",
     "condition",

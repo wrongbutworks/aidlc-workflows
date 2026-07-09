@@ -287,7 +287,7 @@ describe("t188 plugin compose — emit + compose the contribution seam", () => {
   test("unresolvable fragment anchor is dropped-with-log, not silent (R4-2)", () => {
     const { drops } = composeSynthetic("syn-anchor", {
       "contributions/construction/build-and-test.md":
-        `---\ntarget: build-and-test\nbundle: syn-anchor\nadds:\n  produces: []\nfragments:\n  - anchor: after-step:999\n    order: 100\n---\n\n## fragment: after-step:999\n\n### Step 999x (syn): orphaned\n\nprose\n`,
+        `---\ntarget: build-and-test\nplugin: syn-anchor\nadds:\n  produces: []\nfragments:\n  - anchor: after-step:999\n    order: 100\n---\n\n## fragment: after-step:999\n\n### Step 999x (syn): orphaned\n\nprose\n`,
     });
     expect(drops).toContain("after-step:999");
     expect(drops.toLowerCase()).toContain("dropped");
@@ -298,7 +298,7 @@ describe("t188 plugin compose — emit + compose the contribution seam", () => {
     // (land in the body), NOT drop as 'not found'.
     const { drops, proj } = composeSynthetic("syn-range", {
       "contributions/construction/build-and-test.md":
-        `---\ntarget: build-and-test\nbundle: syn-range\nadds:\n  produces: []\nfragments:\n  - anchor: after-step:6\n    order: 100\n---\n\n## fragment: after-step:6\n\n### Step 6-SYN: lands in range\n\nsyn-range prose\n`,
+        `---\ntarget: build-and-test\nplugin: syn-range\nadds:\n  produces: []\nfragments:\n  - anchor: after-step:6\n    order: 100\n---\n\n## fragment: after-step:6\n\n### Step 6-SYN: lands in range\n\nsyn-range prose\n`,
     });
     const body = readFileSync(join(proj, ".claude", "aidlc-common", "stages", "construction", "build-and-test.md"), "utf-8");
     expect(body).toContain("syn-range prose");
@@ -308,7 +308,7 @@ describe("t188 plugin compose — emit + compose the contribution seam", () => {
   test("stage-slug collision is dropped-with-log, not a silent no-op (R4-4)", () => {
     const { drops, proj } = composeSynthetic("syn-collide", {
       "stages/construction/build-and-test.md":
-        `---\nslug: build-and-test\nbundle: syn-collide\nphase: construction\nexecution: ALWAYS\ncondition: always\nlead_agent: aidlc-quality-agent\nsupport_agents: []\nmode: inline\nproduces: []\nconsumes: []\nrequires_stage: []\ninputs: x\noutputs: y\n---\n# SYN-COLLIDE OVERRIDE\n`,
+        `---\nslug: build-and-test\nplugin: syn-collide\nphase: construction\nexecution: ALWAYS\ncondition: always\nlead_agent: aidlc-quality-agent\nsupport_agents: []\nmode: inline\nproduces: []\nconsumes: []\nrequires_stage: []\ninputs: x\noutputs: y\n---\n# SYN-COLLIDE OVERRIDE\n`,
     });
     // the core stage must be untouched, AND the collision must be logged
     const body = readFileSync(join(proj, ".claude", "aidlc-common", "stages", "construction", "build-and-test.md"), "utf-8");
@@ -321,7 +321,7 @@ describe("t188 plugin compose — emit + compose the contribution seam", () => {
     // A fragment whose prose documents the fragment format inside a ``` fence must
     // keep all its prose — the fenced `## fragment:` line must not truncate it.
     const fenced = [
-      "---", "target: build-and-test", "bundle: syn-fence",
+      "---", "target: build-and-test", "plugin: syn-fence",
       "adds:", "  produces: []",
       "fragments:", "  - anchor: after-step:9", "    order: 100", "---", "",
       "## fragment: after-step:9", "",
@@ -339,7 +339,7 @@ describe("t188 plugin compose — emit + compose the contribution seam", () => {
     // Two `## fragment: after-step:9` blocks but only ONE frontmatter entry — the
     // second block must be logged, not silently discarded.
     const extra = [
-      "---", "target: build-and-test", "bundle: syn-extra",
+      "---", "target: build-and-test", "plugin: syn-extra",
       "adds:", "  produces: []",
       "fragments:", "  - anchor: after-step:9", "    order: 100", "---", "",
       "## fragment: after-step:9", "", "### Step 9-A (syn): kept", "", "first", "",
@@ -353,7 +353,7 @@ describe("t188 plugin compose — emit + compose the contribution seam", () => {
     // A UTF-8 BOM before the frontmatter must not make the whole contribution a
     // no-op — the produces still merges (BOM stripped before the ^--- anchor).
     const bom = "﻿" + [
-      "---", "target: build-and-test", "bundle: syn-bom",
+      "---", "target: build-and-test", "plugin: syn-bom",
       "adds:", "  produces:", "    - syn-bom-artifact", "---", "",
     ].join("\n");
     const { proj } = composeSynthetic("syn-bom", { "contributions/construction/build-and-test.md": bom });
@@ -367,7 +367,7 @@ describe("t188 plugin compose — emit + compose the contribution seam", () => {
     // fake marker inside the prose. Assert the upgraded prose is present once and
     // the stage isn't corrupted with a stranded old tail.
     const mk = (tailWord: string) => [
-      "---", "target: build-and-test", "bundle: syn-mark",
+      "---", "target: build-and-test", "plugin: syn-mark",
       "adds:", "  produces: []",
       "fragments:", "  - anchor: after-step:9", "    order: 100", "---", "",
       "## fragment: after-step:9", "", "### Step 9-MARK (syn): tricky", "",
@@ -435,13 +435,34 @@ describe("t188 plugin compose — emit + compose the contribution seam", () => {
     // A clean compose (no drops) leaves no drops file for this plugin.
     const { proj } = composeSynthetic("syn-clean", {
       "contributions/construction/build-and-test.md":
-        `---\ntarget: build-and-test\nbundle: syn-clean\nadds:\n  produces:\n    - syn-clean-artifact\n---\n`,
+        `---\ntarget: build-and-test\nplugin: syn-clean\nadds:\n  produces:\n    - syn-clean-artifact\n---\n`,
     });
     const dropFile = join(proj, "aidlc", "spaces", "default", "intents", ".aidlc-hooks-health", "plugin-compose-syn-clean.drops");
     expect(existsSync(dropFile)).toBe(false);
   });
 
-  // --- Round-6: per-plugin drops isolation + nested fence + bundle colon ---
+  test("deprecated bundle alias still composes", () => {
+    const { drops, proj } = composeSynthetic("syn-alias", {
+      "contributions/construction/build-and-test.md":
+        `---\ntarget: build-and-test\nbundle: syn-alias\nadds:\n  produces:\n    - syn-alias-artifact\n---\n`,
+    });
+    const body = readFileSync(join(proj, ".claude", "aidlc-common", "stages", "construction", "build-and-test.md"), "utf-8");
+    expect(body).toContain("syn-alias-artifact");
+    expect(drops).not.toContain("syn-alias");
+  });
+
+  test("conflicting plugin and bundle alias is skipped with a drop log", () => {
+    const { drops, proj } = composeSynthetic("syn-conflict", {
+      "contributions/construction/build-and-test.md":
+        `---\ntarget: build-and-test\nplugin: syn-conflict\nbundle: other-conflict\nadds:\n  produces:\n    - syn-conflict-artifact\n---\n`,
+    });
+    const body = readFileSync(join(proj, ".claude", "aidlc-common", "stages", "construction", "build-and-test.md"), "utf-8");
+    expect(body).not.toContain("syn-conflict-artifact");
+    expect(drops).toContain("conflicting plugin");
+    expect(drops).toContain("bundle (deprecated alias)");
+  });
+
+  // --- Round-6: per-plugin drops isolation + nested fence + plugin colon ---
   test("a clean plugin's compose does NOT erase another plugin's drops (R6-B1)", () => {
     // Two plugins on the same project: A degrades (missing target), B is clean.
     // B's compose must not delete A's degraded drop (per-plugin drops files).
@@ -461,15 +482,15 @@ describe("t188 plugin compose — emit + compose the contribution seam", () => {
         env: { ...process.env, CLAUDE_PLUGIN_ROOT: root, CLAUDE_PROJECT_DIR: proj, AIDLC_HARNESS_DIR: ".claude" },
       });
     };
-    mkPlugin("pl-degraded", `---\ntarget: no-such-stage-xyz\nbundle: pl-degraded\nadds:\n  produces: []\n---\n`);
-    mkPlugin("pl-clean", `---\ntarget: build-and-test\nbundle: pl-clean\nadds:\n  produces:\n    - pl-clean-artifact\n---\n`);
+    mkPlugin("pl-degraded", `---\ntarget: no-such-stage-xyz\nplugin: pl-degraded\nadds:\n  produces: []\n---\n`);
+    mkPlugin("pl-clean", `---\ntarget: build-and-test\nplugin: pl-clean\nadds:\n  produces:\n    - pl-clean-artifact\n---\n`);
     const hd = join(proj, "aidlc", "spaces", "default", "intents", ".aidlc-hooks-health");
     expect(existsSync(join(hd, "plugin-compose-pl-degraded.drops"))).toBe(true); // survived B's clean run
   });
 
   test("a nested ```` fence does not mis-close on an inner ``` (R6-B2)", () => {
     const nested = [
-      "---", "target: build-and-test", "bundle: syn-nest",
+      "---", "target: build-and-test", "plugin: syn-nest",
       "adds:", "  produces: []",
       "fragments:", "  - anchor: after-step:9", "    order: 100", "---", "",
       "## fragment: after-step:9", "", "### Step 9-NEST (syn): docs", "",
@@ -482,12 +503,12 @@ describe("t188 plugin compose — emit + compose the contribution seam", () => {
     expect(drops).not.toContain("PHANTOM");
   });
 
-  test("a bundle containing ':' is refused with a log (R6-L4)", () => {
+  test("a plugin containing ':' is refused with a log (R6-L4)", () => {
     const { drops } = composeSynthetic("syn-colon", {
       "contributions/construction/build-and-test.md":
-        `---\ntarget: build-and-test\nbundle: bad:bundle\nadds:\n  produces:\n    - syn-colon-artifact\n---\n`,
+        `---\ntarget: build-and-test\nplugin: bad:plugin\nadds:\n  produces:\n    - syn-colon-artifact\n---\n`,
     });
-    expect(drops).toContain("invalid bundle");
+    expect(drops).toContain("invalid plugin");
   });
 
   // --- `plugin build` outDir guard (pre-merge review asks) ---

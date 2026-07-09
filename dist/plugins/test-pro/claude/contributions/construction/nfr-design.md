@@ -1,6 +1,6 @@
 ---
 target: nfr-design
-bundle: test-pro
+plugin: test-pro
 adds:
   produces:
     - test-pro-test-harness-design
