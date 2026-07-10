@@ -206,7 +206,7 @@ Examples:
   /aidlc feature                                Start a feature workflow
   /aidlc Fix the login timeout bug              Auto-detected as bugfix scope
   /aidlc compose "harden the deploy pipeline"   Composer proposes a tailored plan
-  bun .claude/tools/aidlc-utility.ts select-plugins aidlc,test-pro  Enable core + test-pro
+  bun ${harnessDir()}/tools/aidlc-utility.ts select-plugins aidlc,test-pro  Enable core + test-pro
   /aidlc                                        Resume or begin
   /aidlc --stage code-generation                Jump to code-generation stage
   /aidlc --phase construction --scope bugfix    Jump to construction with bugfix scope
@@ -946,14 +946,22 @@ function handleDoctor(projectDir: string): void {
         }
       }
     }
+    // Hard-fail ONLY under an active selection: there the missing node means a
+    // torn select-plugins run (selection installs regenerate via select-plugins,
+    // which compiles in-chain). Without a selection an uncompiled stage file is
+    // deliberate authoring state - the pre-existing "Uncompiled stage files"
+    // advisory row below owns that case (issue #364's contract: advisory, exit 0).
+    const torn = selected !== null && missingEnabled.length > 0;
     results.push({
-      pass: missingEnabled.length === 0,
+      pass: !torn,
       label: missingEnabled.length === 0
         ? "Enabled stage compile coverage: every enabled stage file is in the full graph"
-        : `Enabled stage compile coverage: ${missingEnabled.length} enabled stage file(s) missing from the full graph`,
-      fix: missingEnabled.length > 0
+        : torn
+          ? `Enabled stage compile coverage: ${missingEnabled.length} enabled stage file(s) missing from the full graph`
+          : `Enabled stage compile coverage: ${missingEnabled.length} uncompiled stage file(s) - no selection active, see the Uncompiled stage files advisory`,
+      fix: torn
         ? `${missingEnabled.join("; ")} - recover with \`bun ${harnessDir()}/tools/aidlc-utility.ts select-plugins ${
-            selected === null ? knownPluginNames().join(",") : [...selected].sort().join(",")
+            [...(selected as ReadonlySet<string>)].sort().join(",")
           }\``
         : undefined,
     });
