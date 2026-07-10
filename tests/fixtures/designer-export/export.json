@@ -2833,7 +2833,9 @@
         "bug",
         "broken"
       ],
-      "description": "Fix a specific bug"
+      "description": "Fix a specific bug",
+      "runner": true,
+      "skeleton": false
     },
     "enterprise": {
       "depth": "Comprehensive",
@@ -2872,7 +2874,8 @@
         "feedback-optimization": "EXECUTE"
       },
       "keywords": [],
-      "description": "Regulated enterprise feature, full audit trail"
+      "description": "Regulated enterprise feature, full audit trail",
+      "skeleton": true
     },
     "feature": {
       "depth": "Standard",
@@ -2911,7 +2914,9 @@
         "feedback-optimization": "EXECUTE"
       },
       "keywords": [],
-      "description": "Default for new features, practical depth"
+      "description": "Default for new features, practical depth",
+      "runner": true,
+      "skeleton": true
     },
     "infra": {
       "depth": "Standard",
@@ -2954,7 +2959,8 @@
         "deploy",
         "infra"
       ],
-      "description": "Infrastructure changes"
+      "description": "Infrastructure changes",
+      "skeleton": true
     },
     "mvp": {
       "depth": "Standard",
@@ -2996,7 +3002,9 @@
         "mvp",
         "minimum viable"
       ],
-      "description": "Skip operations, ship the core"
+      "description": "Skip operations, ship the core",
+      "runner": true,
+      "skeleton": true
     },
     "poc": {
       "depth": "Minimal",
@@ -3040,7 +3048,8 @@
         "poc",
         "spike"
       ],
-      "description": "Prove feasibility fast"
+      "description": "Prove feasibility fast",
+      "skeleton": true
     },
     "refactor": {
       "depth": "Minimal",
@@ -3083,7 +3092,8 @@
         "clean up",
         "simplify"
       ],
-      "description": "Clean up existing code"
+      "description": "Clean up existing code",
+      "skeleton": false
     },
     "security-patch": {
       "depth": "Minimal",
@@ -3127,7 +3137,9 @@
         "vulnerability",
         "patch"
       ],
-      "description": "CVE response"
+      "description": "CVE response",
+      "runner": true,
+      "skeleton": false
     },
     "workshop": {
       "depth": "Standard",
@@ -3171,7 +3183,8 @@
         "training"
       ],
       "description": "Facilitated group session with mandatory gates",
-      "testStrategy": "Minimal"
+      "testStrategy": "Minimal",
+      "skeleton": true
     }
   },
   "artifacts": [

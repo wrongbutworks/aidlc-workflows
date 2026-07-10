@@ -622,10 +622,23 @@ aidlc-product-agent, aidlc-design-agent, aidlc-delivery-agent, aidlc-architect-a
 Create exactly the detail needed — no more, no less. Depth adapts to scope and problem complexity:
 
 ### Scope-to-depth mapping
-The active scope file declares the default `depth`, and the compiled scope grid
-declares which stages execute. Use `bun {{HARNESS_DIR}}/tools/aidlc-utility.ts
-scope-table` for the current scope/depth/count table instead of copying counts
-into this protocol.
+The active scope file declares the default `depth` (the rows below mirror the
+shipped scope files' `depth:` frontmatter - name and depth only, no stage
+counts), and the compiled scope grid declares which stages execute. Use `bun
+{{HARNESS_DIR}}/tools/aidlc-utility.ts scope-table` for the current
+scope/depth/count table - never copy stage counts into this protocol.
+
+| Scope | Default Depth |
+|-------|---------------|
+| enterprise | Comprehensive |
+| feature | Standard |
+| mvp | Standard |
+| workshop | Standard |
+| infra | Standard |
+| poc | Minimal |
+| bugfix | Minimal |
+| refactor | Minimal |
+| security-patch | Minimal |
 
 ### Depth levels
 - **Minimal** (poc, bugfix, refactor, security-patch): ~2-4 questions per stage, minimal artifacts, brief analysis

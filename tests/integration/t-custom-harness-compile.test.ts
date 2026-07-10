@@ -461,13 +461,18 @@ outputs: none
     }
   });
 
-  // E5 — two stage .md files declare the same slug.
+  // E5 — two stage .md files declare the same slug. The dupe keeps the slug
+  // as its filename stem but lives in a DIFFERENT phase dir, so the
+  // stem==slug compile guard passes and the duplicate-slug guard is the one
+  // that fires — both are valid guards, this asserts the slug one.
   // Guard: duplicate-slug in aidlc-graph.ts.
   test("E5: two stage files with the same slug fail compile", () => {
     const proj = setupIntegrationProject({ customHarness: true });
     try {
       const src = stagePath(proj, SNAPSHOT_STAGE_PHASE, SNAPSHOT_STAGE_SLUG);
-      writeFileSync(stagePath(proj, SNAPSHOT_STAGE_PHASE, "dupe-snapshot"), readFileSync(src, "utf8"));
+      const dupe = stagePath(proj, "construction", SNAPSHOT_STAGE_SLUG);
+      mkdirSync(dirname(dupe), { recursive: true });
+      writeFileSync(dupe, readFileSync(src, "utf8"));
       const r = graph(proj, ["compile"]);
       expect(r.status).not.toBe(0);
       expect(r.stderr).toContain(`Duplicate stage slug "${SNAPSHOT_STAGE_SLUG}"`);
