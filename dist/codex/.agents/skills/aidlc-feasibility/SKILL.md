@@ -1,5 +1,6 @@
 ---
 name: aidlc-feasibility
+generated-by: aidlc-runner-gen
 description: >
   Run the AI-DLC `feasibility` stage (ideation phase) in isolation, without
   advancing the main workflow. Packages `/aidlc --stage feasibility --single`:

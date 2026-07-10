@@ -1,5 +1,6 @@
 ---
 name: aidlc-ci-pipeline
+generated-by: aidlc-runner-gen
 description: >
   Run the AI-DLC `ci-pipeline` stage (construction phase) in isolation, without
   advancing the main workflow. Packages `/aidlc --stage ci-pipeline --single`:

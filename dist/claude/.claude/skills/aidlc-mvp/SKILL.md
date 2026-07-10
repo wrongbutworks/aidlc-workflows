@@ -1,5 +1,6 @@
 ---
 name: aidlc-mvp
+generated-by: aidlc-runner-gen
 description: >
   Run the AI-DLC workflow with the mvp scope baked in — no scope
   detection. Skip operations, ship the core. Packaging over `/aidlc --scope mvp`, which works

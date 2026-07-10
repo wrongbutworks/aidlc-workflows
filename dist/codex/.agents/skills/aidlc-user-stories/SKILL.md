@@ -1,5 +1,6 @@
 ---
 name: aidlc-user-stories
+generated-by: aidlc-runner-gen
 description: >
   Run the AI-DLC `user-stories` stage (inception phase) in isolation, without
   advancing the main workflow. Packages `/aidlc --stage user-stories --single`:

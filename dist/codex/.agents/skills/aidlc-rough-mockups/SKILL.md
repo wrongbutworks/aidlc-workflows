@@ -1,5 +1,6 @@
 ---
 name: aidlc-rough-mockups
+generated-by: aidlc-runner-gen
 description: >
   Run the AI-DLC `rough-mockups` stage (ideation phase) in isolation, without
   advancing the main workflow. Packages `/aidlc --stage rough-mockups --single`:

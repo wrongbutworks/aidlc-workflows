@@ -1,5 +1,6 @@
 ---
 name: aidlc-feature
+generated-by: aidlc-runner-gen
 description: >
   Run the AI-DLC workflow with the feature scope baked in — no scope
   detection. Default for new features, practical depth. Packaging over `/aidlc --scope feature`, which works

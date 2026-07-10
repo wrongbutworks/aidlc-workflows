@@ -1,5 +1,6 @@
 ---
 name: aidlc-observability-setup
+generated-by: aidlc-runner-gen
 description: >
   Run the AI-DLC `observability-setup` stage (operation phase) in isolation, without
   advancing the main workflow. Packages `/aidlc --stage observability-setup --single`:

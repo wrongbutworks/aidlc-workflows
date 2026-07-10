@@ -1,5 +1,6 @@
 ---
 name: aidlc-feedback-optimization
+generated-by: aidlc-runner-gen
 description: >
   Run the AI-DLC `feedback-optimization` stage (operation phase) in isolation, without
   advancing the main workflow. Packages `/aidlc --stage feedback-optimization --single`:

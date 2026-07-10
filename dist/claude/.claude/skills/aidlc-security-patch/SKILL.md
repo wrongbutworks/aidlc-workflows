@@ -1,5 +1,6 @@
 ---
 name: aidlc-security-patch
+generated-by: aidlc-runner-gen
 description: >
   Run the AI-DLC workflow with the security-patch scope baked in — no scope
   detection. CVE response. Packaging over `/aidlc --scope security-patch`, which works

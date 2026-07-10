@@ -1,5 +1,6 @@
 ---
 name: aidlc-delivery-planning
+generated-by: aidlc-runner-gen
 description: >
   Run the AI-DLC `delivery-planning` stage (inception phase) in isolation, without
   advancing the main workflow. Packages `/aidlc --stage delivery-planning --single`:

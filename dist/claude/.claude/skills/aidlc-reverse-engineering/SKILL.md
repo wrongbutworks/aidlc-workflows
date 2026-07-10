@@ -1,5 +1,6 @@
 ---
 name: aidlc-reverse-engineering
+generated-by: aidlc-runner-gen
 description: >
   Run the AI-DLC `reverse-engineering` stage (inception phase) in isolation, without
   advancing the main workflow. Packages `/aidlc --stage reverse-engineering --single`:

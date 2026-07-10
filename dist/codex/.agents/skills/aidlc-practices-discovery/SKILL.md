@@ -1,5 +1,6 @@
 ---
 name: aidlc-practices-discovery
+generated-by: aidlc-runner-gen
 description: >
   Run the AI-DLC `practices-discovery` stage (inception phase) in isolation, without
   advancing the main workflow. Packages `/aidlc --stage practices-discovery --single`:

@@ -1,5 +1,6 @@
 ---
 name: aidlc-refined-mockups
+generated-by: aidlc-runner-gen
 description: >
   Run the AI-DLC `refined-mockups` stage (inception phase) in isolation, without
   advancing the main workflow. Packages `/aidlc --stage refined-mockups --single`:

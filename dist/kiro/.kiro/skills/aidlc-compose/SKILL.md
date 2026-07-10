@@ -1,5 +1,6 @@
 ---
 name: aidlc-compose
+generated-by: aidlc-runner-gen
 description: >
   Compose a tailored AI-DLC workflow plan - the adaptive composer reads your
   task (or a scan report), proposes the EXECUTE/SKIP stage grid that fits,

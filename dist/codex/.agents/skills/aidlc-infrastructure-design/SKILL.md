@@ -1,5 +1,6 @@
 ---
 name: aidlc-infrastructure-design
+generated-by: aidlc-runner-gen
 description: >
   Run the AI-DLC `infrastructure-design` stage (construction phase) in isolation, without
   advancing the main workflow. Packages `/aidlc --stage infrastructure-design --single`:

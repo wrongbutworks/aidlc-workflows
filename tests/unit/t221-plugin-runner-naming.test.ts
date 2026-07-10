@@ -126,6 +126,93 @@ function runRunnerGen(gen: string, args: string[], env: Record<string, string> =
   });
 }
 
+function projectRunnerGen(project: string): string {
+  const gen = join(project, ".claude", "tools", "aidlc-runner-gen.ts");
+  cpSync(CORE_RUNNER_GEN, gen);
+  return gen;
+}
+
+function writeSkill(skillsDir: string, dirName: string, body: string): string {
+  const dir = join(skillsDir, dirName);
+  mkdirSync(dir, { recursive: true });
+  const path = join(dir, "SKILL.md");
+  writeFileSync(path, body, "utf-8");
+  return path;
+}
+
+function writeScope(scopesDir: string, name: string, runner: boolean | null = null, plugin?: string): void {
+  mkdirSync(scopesDir, { recursive: true });
+  const lines = [
+    "---",
+    `name: ${name}`,
+    ...(plugin ? [`plugin: ${plugin}`] : []),
+    "depth: Minimal",
+    "keywords: []",
+    `description: ${name} test scope`,
+    ...(runner === null ? [] : [`runner: ${runner ? "true" : "false"}`]),
+    "---",
+    "",
+    `# ${name}`,
+    "",
+  ];
+  writeFileSync(join(scopesDir, `aidlc-${name}.md`), lines.join("\n"), "utf-8");
+}
+
+function setPluginSelection(project: string, plugins: string[]): void {
+  writeFileSync(
+    join(project, ".claude", "tools", "data", "harness.json"),
+    `${JSON.stringify({ harnessDir: ".claude", rulesSubdir: "rules", plugins }, null, 2)}\n`,
+    "utf-8",
+  );
+}
+
+function hasGeneratedByMarker(body: string): boolean {
+  const m = body.match(/^---\r?\n([\s\S]*?)\r?\n---/);
+  return /^generated-by:\s*aidlc-runner-gen\s*$/m.test(m?.[1] ?? "");
+}
+
+function unmanagedPlaybookBody(): string {
+  return [
+    "---",
+    "name: team-playbook",
+    "description: Team playbook that documents AI-DLC commands.",
+    "user-invocable: true",
+    "---",
+    "",
+    "# Team playbook",
+    "",
+    "Documented stage command:",
+    "",
+    "```bash",
+    "bun .claude/tools/aidlc-orchestrate.ts next --stage retired-stage --single",
+    "```",
+    "",
+    "Documented scope command:",
+    "",
+    "```bash",
+    "bun .claude/tools/aidlc-orchestrate.ts next --scope retired-scope",
+    "```",
+    "",
+  ].join("\n");
+}
+
+function legacyStageRunnerBody(slug: string): string {
+  return [
+    "---",
+    `name: aidlc-${slug}`,
+    "description: Legacy generated runner without provenance.",
+    "user-invocable: true",
+    "---",
+    "",
+    "# Legacy runner",
+    "",
+    "```bash",
+    `bun .claude/tools/aidlc-orchestrate.ts next --stage ${slug} --single`,
+    "```",
+    "",
+  ].join("\n");
+}
+
 describe("t221 plugin ownership and runner naming", () => {
   test("compile carries plugin only for plugin-owned stages", () => {
     const compiled = compileFixture({
@@ -246,5 +333,114 @@ describe("t221 plugin ownership and runner naming", () => {
     );
     expect(allRun.status).toBe(0);
     expect(existsSync(join(allOut, "aidlc-fixture-scope", "SKILL.md"))).toBe(true);
+  });
+
+  test("generated stage and scope runners carry generated-by provenance marker", () => {
+    const project = setupIntegrationProject({ noAidlcDocs: true });
+    tempDirs.push(project);
+    const gen = projectRunnerGen(project);
+
+    const writeRun = runRunnerGen(gen, ["write"]);
+    expect(writeRun.status).toBe(0);
+    const scopesRun = runRunnerGen(gen, ["scopes"]);
+    expect(scopesRun.status).toBe(0);
+
+    const stageBody = readFileSync(
+      join(project, ".claude", "skills", "aidlc-code-generation", "SKILL.md"),
+      "utf-8",
+    );
+    const scopeBody = readFileSync(
+      join(project, ".claude", "skills", "aidlc-bugfix", "SKILL.md"),
+      "utf-8",
+    );
+    expect(hasGeneratedByMarker(stageBody)).toBe(true);
+    expect(hasGeneratedByMarker(scopeBody)).toBe(true);
+  });
+
+  test("unmanaged signature-matching skill survives write and scopes prunes", () => {
+    const project = setupIntegrationProject({ noAidlcDocs: true });
+    tempDirs.push(project);
+    const gen = projectRunnerGen(project);
+    const skillsDir = join(project, ".claude", "skills");
+    const playbook = writeSkill(skillsDir, "team-playbook", unmanagedPlaybookBody());
+
+    const writeRun = runRunnerGen(gen, ["write"]);
+    expect(writeRun.status).toBe(0);
+    expect(existsSync(playbook)).toBe(true);
+    expect(writeRun.stderr).toContain("unmanaged skill, not pruned: team-playbook");
+
+    const scopesDir = tempDir("aidlc-t221-no-runner-scopes-");
+    writeScope(scopesDir, "doc-only", false);
+    setPluginSelection(project, []);
+    const scopesRun = runRunnerGen(gen, ["scopes"], { AIDLC_SCOPES_DIR: scopesDir });
+    expect(scopesRun.status).toBe(0);
+    expect(existsSync(playbook)).toBe(true);
+    expect(scopesRun.stderr).toContain("unmanaged skill, not pruned: team-playbook");
+  });
+
+  test("legacy markerless generated stage runner is pruned by generated name", () => {
+    const project = setupIntegrationProject({ noAidlcDocs: true });
+    tempDirs.push(project);
+    const gen = projectRunnerGen(project);
+    const skillsDir = join(project, ".claude", "skills");
+    const legacy = writeSkill(
+      skillsDir,
+      "aidlc-retired-stage",
+      legacyStageRunnerBody("retired-stage"),
+    );
+
+    const writeRun = runRunnerGen(gen, ["write"]);
+    expect(writeRun.status).toBe(0);
+    expect(existsSync(legacy)).toBe(false);
+  });
+
+  test("empty scope batch without plugin selection does not prune existing scope runners", () => {
+    const project = setupIntegrationProject({ noAidlcDocs: true });
+    tempDirs.push(project);
+    const gen = projectRunnerGen(project);
+    const scopesDir = tempDir("aidlc-t221-empty-scopes-");
+    writeScope(scopesDir, "doc-only", false);
+    const existing = join(project, ".claude", "skills", "aidlc-bugfix", "SKILL.md");
+
+    const run = runRunnerGen(gen, ["scopes"], { AIDLC_SCOPES_DIR: scopesDir });
+    expect(run.status).toBe(0);
+    expect(existsSync(existing)).toBe(true);
+    expect(run.stderr).toContain(`no scope-runner batch resolved from ${scopesDir}`);
+    expect(run.stderr).toContain("no scope files with runner:true found");
+    expect(run.stderr).toContain("scope directory is missing or mispointed");
+  });
+
+  test("empty scope batch with plugin selection prunes existing scope runners", () => {
+    const project = setupIntegrationProject({ noAidlcDocs: true });
+    tempDirs.push(project);
+    const gen = projectRunnerGen(project);
+    const scopesDir = tempDir("aidlc-t221-selected-empty-scopes-");
+    writeScope(scopesDir, "doc-only", false);
+    setPluginSelection(project, []);
+    const existing = join(project, ".claude", "skills", "aidlc-bugfix", "SKILL.md");
+
+    const run = runRunnerGen(gen, ["scopes"], { AIDLC_SCOPES_DIR: scopesDir });
+    expect(run.status).toBe(0);
+    expect(existsSync(existing)).toBe(false);
+    expect(run.stdout).toContain("pruned stale scope-runners");
+  });
+
+  test("malformed scope file does not prevent stage runner write", () => {
+    const project = setupIntegrationProject({ noAidlcDocs: true });
+    tempDirs.push(project);
+    const gen = projectRunnerGen(project);
+    const stageRunner = join(project, ".claude", "skills", "aidlc-code-generation", "SKILL.md");
+    writeFileSync(stageRunner, "stale\n", "utf-8");
+    writeFileSync(
+      join(project, ".claude", "scopes", "aidlc-broken.md"),
+      "---\nname: broken\n",
+      "utf-8",
+    );
+
+    const run = runRunnerGen(gen, ["write"]);
+    expect(run.status).toBe(0);
+    const body = readFileSync(stageRunner, "utf-8");
+    expect(hasGeneratedByMarker(body)).toBe(true);
+    expect(body).toContain("--stage code-generation --single");
   });
 });

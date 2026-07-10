@@ -1,5 +1,6 @@
 ---
 name: aidlc-application-design
+generated-by: aidlc-runner-gen
 description: >
   Run the AI-DLC `application-design` stage (inception phase) in isolation, without
   advancing the main workflow. Packages `/aidlc --stage application-design --single`:

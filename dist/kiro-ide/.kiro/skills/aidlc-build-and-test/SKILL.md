@@ -1,5 +1,6 @@
 ---
 name: aidlc-build-and-test
+generated-by: aidlc-runner-gen
 description: >
   Run the AI-DLC `build-and-test` stage (construction phase) in isolation, without
   advancing the main workflow. Packages `/aidlc --stage build-and-test --single`:

@@ -1,5 +1,6 @@
 ---
 name: aidlc-deployment-execution
+generated-by: aidlc-runner-gen
 description: >
   Run the AI-DLC `deployment-execution` stage (operation phase) in isolation, without
   advancing the main workflow. Packages `/aidlc --stage deployment-execution --single`:

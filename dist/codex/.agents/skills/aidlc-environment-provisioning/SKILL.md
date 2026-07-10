@@ -1,5 +1,6 @@
 ---
 name: aidlc-environment-provisioning
+generated-by: aidlc-runner-gen
 description: >
   Run the AI-DLC `environment-provisioning` stage (operation phase) in isolation, without
   advancing the main workflow. Packages `/aidlc --stage environment-provisioning --single`:

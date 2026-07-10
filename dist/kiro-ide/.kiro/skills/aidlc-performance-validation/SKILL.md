@@ -1,5 +1,6 @@
 ---
 name: aidlc-performance-validation
+generated-by: aidlc-runner-gen
 description: >
   Run the AI-DLC `performance-validation` stage (operation phase) in isolation, without
   advancing the main workflow. Packages `/aidlc --stage performance-validation --single`:

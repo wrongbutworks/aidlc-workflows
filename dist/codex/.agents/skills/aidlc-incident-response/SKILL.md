@@ -1,5 +1,6 @@
 ---
 name: aidlc-incident-response
+generated-by: aidlc-runner-gen
 description: >
   Run the AI-DLC `incident-response` stage (operation phase) in isolation, without
   advancing the main workflow. Packages `/aidlc --stage incident-response --single`:

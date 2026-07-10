@@ -6,7 +6,7 @@
 // registry unit of its own — confirmed: tests/.coverage-registry.json has no
 // function/subcommand id for aidlc-runner-gen). So this twin credits the four
 // `scope:` units it genuinely exercises — bugfix / feature / mvp / security-patch,
-// the FIRST_BATCH the generator ships a runner for (the same four registered
+// the default batch the generator ships a runner for (the same four registered
 // scope units the feature-tier t130 twin credits; this smoke twin co-covers them
 // through their on-disk packaging surface, a DIFFERENT subject from the feature
 // twin's engine-routing surface).
@@ -31,7 +31,7 @@
 // MECHANISM = mixed (body-derived, milestone 3):
 //   - The structural conformance + curated-subset checks read the SHIPPED
 //     skills/aidlc-<scope>/SKILL.md bytes in process AND import the generator's
-//     exported renderRunner / discoverScopes / FIRST_BATCH to assert the rendered
+//     exported renderRunner / discoverScopes / defaultScopeBatch to assert the rendered
 //     contract directly (mechanism none — zero process spawn). STRONGER than the
 //     .sh's grep-on-disk: the frontmatter-name, description-present, no-hooks, and
 //     forwarding-loop checks are asserted against BOTH the on-disk bytes AND the
@@ -45,8 +45,8 @@
 //     process.exit drift contract and the env-seam isolation. spawnsShippedTool.
 //
 // SOURCE UNDER TEST (dist/claude/.claude/tools/aidlc-runner-gen.ts):
-//   :307 FIRST_BATCH = ["bugfix","feature","mvp","security-patch"] — the curated
-//        set that ships a typeable runner; every other scope runs via --scope.
+//   defaultScopeBatch(discoverScopes()) - the curated set that ships a typeable
+//        runner; every other scope runs via --scope.
 //   :384 renderRunner(scope, description) — emits the SKILL.md body: `name:
 //        aidlc-<scope>` frontmatter, a `description: >` folded block, NO `hooks:`
 //        block, and the `aidlc-orchestrate.ts next --scope <scope>` forwarding
@@ -83,19 +83,14 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { AIDLC_SRC } from "../harness/fixtures.ts";
 import {
+  defaultScopeBatch,
   discoverScopes,
-  FIRST_BATCH,
   renderRunner,
 } from "../../dist/claude/.claude/tools/aidlc-runner-gen.ts";
 
 const BUN = process.execPath; // the bun running this test
 const SKILLS_DIR = join(AIDLC_SRC, "skills");
 const GEN = join(AIDLC_SRC, "tools", "aidlc-runner-gen.ts");
-
-// The first batch the generator ships (mirrors aidlc-runner-gen.ts FIRST_BATCH,
-// :307). Read from the exported constant so a batch change can never drift the
-// test out from under the tool — the .sh hard-coded the same four names.
-const BATCH = [...FIRST_BATCH];
 
 /** The shipped runner SKILL.md path for one scope (skills/aidlc-<scope>/SKILL.md). */
 function runnerPath(scope: string): string {
@@ -113,6 +108,10 @@ function frontmatterName(skillMd: string): string {
 // Discovered scope frontmatter (drives the renderRunner co-assertion below; the
 // generator keys discovery by frontmatter `name`, :364).
 const DISCOVERED = discoverScopes();
+
+// The default batch the generator ships. Read through the exported function so
+// a batch change can never drift the test out from under the tool.
+const BATCH = defaultScopeBatch(DISCOVERED);
 
 const tempDirs: string[] = [];
 afterAll(() => {
@@ -196,14 +195,14 @@ describe("t130 scope-runners — structural conformance of the shipped first-bat
 
   // ===========================================================================
   // Negative — a non-batch scope ships no runner (1 test). `refactor` is a
-  // shipped scope (.claude/scopes/aidlc-refactor.md) but NOT in FIRST_BATCH, so
+  // shipped scope (.claude/scopes/aidlc-refactor.md) but NOT in the default batch, so
   // it must run via `--scope`, never a runner. Pins runners as a curated subset.
   // ===========================================================================
   test("non-batch scope (refactor) has no runner — runs via --scope [.sh test h]", () => {
     // .sh: assert_file_not_exists skills/aidlc-refactor/SKILL.md.
     expect(existsSync(runnerPath("refactor"))).toBe(false);
     // STRONGER: refactor IS a discovered scope (so its absence is a deliberate
-    // curation, not a missing scope file) and it is genuinely NOT in FIRST_BATCH.
+    // curation, not a missing scope file) and it is genuinely NOT in the default batch.
     expect("refactor" in DISCOVERED).toBe(true);
     expect(BATCH.includes("refactor")).toBe(false);
   });

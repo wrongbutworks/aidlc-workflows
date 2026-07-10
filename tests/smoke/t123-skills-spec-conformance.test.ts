@@ -12,17 +12,17 @@
 // tool as a process-boundary contract. So the twin reads the same static files
 // in-process (resolved from the harness's AIDLC_SRC, the same
 // dist/claude/.claude root the .sh reached via $CLAUDE_DIR) and asserts. Zero
-// LLM, zero tokens, zero subprocess. The ONE in-repo import — FIRST_BATCH from
-// aidlc-runner-gen.ts — is a pure exported constant, not a spawn (the .sh
-// hardcoded the same four scope-runner names in SCOPE_RUNNER_SKILLS; importing
-// the constant is STRONGER: it tracks the generator's source of truth so a
-// FIRST_BATCH edit flows into this guard automatically).
+// LLM, zero tokens, zero subprocess. The ONE in-repo import - defaultScopeBatch
+// from aidlc-runner-gen.ts - is a pure function import, not a spawn (the .sh
+// hardcoded the same four scope-runner names in SCOPE_RUNNER_SKILLS; calling
+// the function is STRONGER: it tracks the generator's source of truth so a
+// default-batch edit flows into this guard automatically).
 //
 // Subject under test (the shipped skill set + each SKILL.md):
 //   dist/claude/.claude/skills/<skill>/SKILL.md — for the DERIVED expected set:
 //     - 4 base skills (orchestrator + 3 read-only session skills)
-//     - the generator's FIRST_BATCH scope-runners (aidlc-runner-gen.ts:307,
-//       imported here, not hardcoded)
+//     - the generator's default-batch scope-runners (imported here, not
+//       hardcoded)
 //     - one aidlc-<slug> per RUNNABLE compiled stage (every stage whose
 //       phase !== "initialization", read from tools/data/stage-graph.json
 //       exactly as the .sh's `bun -e` did — the array of stage records)
@@ -34,9 +34,9 @@
 //
 // DERIVED, never hardcoded (the .sh's central design promise): the expected
 // set is computed from the same two sources the .sh used — stage-graph.json
-// (filtered to non-initialization phases) + FIRST_BATCH — so a stage added to
-// the graph flows into this guard automatically and cannot silently ship a
-// non-conformant runner. The dir-count guard (test 1) then proves the on-disk
+// (filtered to non-initialization phases) + defaultScopeBatch() - so a stage
+// added to the graph flows into this guard automatically and cannot silently
+// ship a non-conformant runner. The dir-count guard (test 1) then proves the on-disk
 // shipped set EQUALS that derived set.
 //
 // Old TAP -> new test parity (1:1, no guarantee dropped; several STRONGER):
@@ -67,7 +67,7 @@ import { describe, expect, test } from "bun:test";
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { AIDLC_SRC } from "../harness/fixtures.ts";
-import { FIRST_BATCH } from "../../dist/claude/.claude/tools/aidlc-runner-gen.ts";
+import { defaultScopeBatch } from "../../dist/claude/.claude/tools/aidlc-runner-gen.ts";
 
 const SKILLS_DIR = join(AIDLC_SRC, "skills");
 const STAGE_GRAPH = join(AIDLC_SRC, "tools", "data", "stage-graph.json");
@@ -80,10 +80,10 @@ const BASE_SKILLS = [
   "aidlc-session-cost",
 ];
 
-// --- The first-batch generated scope-runner dirs. IMPORTED from the generator
-// (aidlc-runner-gen.ts FIRST_BATCH), not hardcoded — the .sh hardcoded the same
-// four in SCOPE_RUNNER_SKILLS; tracking the constant is the stronger contract.
-const SCOPE_RUNNER_SKILLS = FIRST_BATCH.map((s) => `aidlc-${s}`);
+// --- The default-batch generated scope-runner dirs. IMPORTED from the generator
+// by calling defaultScopeBatch(), not hardcoded - the .sh hardcoded the same
+// four in SCOPE_RUNNER_SKILLS; tracking the function is the stronger contract.
+const SCOPE_RUNNER_SKILLS = defaultScopeBatch().map((s) => `aidlc-${s}`);
 
 // --- One aidlc-<slug> per RUNNABLE compiled stage, derived from the graph the
 // same way the .sh's `bun -e` did: read tools/data/stage-graph.json (the array

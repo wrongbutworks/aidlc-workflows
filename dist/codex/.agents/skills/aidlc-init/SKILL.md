@@ -1,5 +1,6 @@
 ---
 name: aidlc-init
+generated-by: aidlc-runner-gen
 description: >
   Start an AI-DLC workflow — run the whole Initialization phase (mint the
   intent, detect the workspace, build state) in one step, without typing a

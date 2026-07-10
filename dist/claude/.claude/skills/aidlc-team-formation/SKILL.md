@@ -1,5 +1,6 @@
 ---
 name: aidlc-team-formation
+generated-by: aidlc-runner-gen
 description: >
   Run the AI-DLC `team-formation` stage (ideation phase) in isolation, without
   advancing the main workflow. Packages `/aidlc --stage team-formation --single`:

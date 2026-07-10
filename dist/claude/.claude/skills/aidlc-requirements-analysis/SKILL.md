@@ -1,5 +1,6 @@
 ---
 name: aidlc-requirements-analysis
+generated-by: aidlc-runner-gen
 description: >
   Run the AI-DLC `requirements-analysis` stage (inception phase) in isolation, without
   advancing the main workflow. Packages `/aidlc --stage requirements-analysis --single`:

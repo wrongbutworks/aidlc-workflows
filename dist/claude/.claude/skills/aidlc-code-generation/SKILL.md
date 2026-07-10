@@ -1,5 +1,6 @@
 ---
 name: aidlc-code-generation
+generated-by: aidlc-runner-gen
 description: >
   Run the AI-DLC `code-generation` stage (construction phase) in isolation, without
   advancing the main workflow. Packages `/aidlc --stage code-generation --single`:

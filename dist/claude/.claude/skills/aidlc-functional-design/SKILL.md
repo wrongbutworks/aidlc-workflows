@@ -1,5 +1,6 @@
 ---
 name: aidlc-functional-design
+generated-by: aidlc-runner-gen
 description: >
   Run the AI-DLC `functional-design` stage (construction phase) in isolation, without
   advancing the main workflow. Packages `/aidlc --stage functional-design --single`:

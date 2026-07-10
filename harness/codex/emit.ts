@@ -316,8 +316,8 @@ export default function emit(ctx: EmitContext): EmitResult {
     renderStageRunner: (node: { slug: string }) => string;
     renderInitRunner: () => string;
     renderComposeRunner: () => string;
-    FIRST_BATCH: readonly string[];
-    discoverScopes: () => Record<string, { description: string }>;
+    defaultScopeBatch: (discovered?: Record<string, { name: string; description: string; plugin?: string; runner?: boolean }>) => string[];
+    discoverScopes: () => Record<string, { name: string; description: string; plugin?: string; runner?: boolean }>;
     renderRunner: (scope: string, description: string) => string;
   };
 
@@ -366,9 +366,9 @@ export default function emit(ctx: EmitContext): EmitResult {
   emissions.push({ path: join(SKILLS_DST, "aidlc-init", "agents", "openai.yaml"), content: () => IMPLICIT_GUARD });
   emissions.push({ path: join(SKILLS_DST, "aidlc-compose", "SKILL.md"), content: () => rewriteProse(gen.renderComposeRunner()) });
   emissions.push({ path: join(SKILLS_DST, "aidlc-compose", "agents", "openai.yaml"), content: () => IMPLICIT_GUARD });
-  // (c) FIRST_BATCH scope runners
+  // (c) Default-batch scope runners
   const scopes = gen.discoverScopes();
-  for (const scope of gen.FIRST_BATCH.filter((s) => s in scopes)) {
+  for (const scope of gen.defaultScopeBatch(scopes).filter((s) => s in scopes)) {
     const dir = join(SKILLS_DST, `aidlc-${scope}`);
     emissions.push({ path: join(dir, "SKILL.md"), content: () => rewriteProse(gen.renderRunner(scope, scopes[scope].description)) });
     emissions.push({ path: join(dir, "agents", "openai.yaml"), content: () => IMPLICIT_GUARD });

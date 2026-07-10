@@ -1,5 +1,6 @@
 ---
 name: aidlc-bugfix
+generated-by: aidlc-runner-gen
 description: >
   Run the AI-DLC workflow with the bugfix scope baked in — no scope
   detection. Fix a specific bug. Packaging over `/aidlc --scope bugfix`, which works

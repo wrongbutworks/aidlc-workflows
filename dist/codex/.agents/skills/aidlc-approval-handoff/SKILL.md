@@ -1,5 +1,6 @@
 ---
 name: aidlc-approval-handoff
+generated-by: aidlc-runner-gen
 description: >
   Run the AI-DLC `approval-handoff` stage (ideation phase) in isolation, without
   advancing the main workflow. Packages `/aidlc --stage approval-handoff --single`:

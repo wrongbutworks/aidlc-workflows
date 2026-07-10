@@ -1,5 +1,6 @@
 ---
 name: aidlc-scope-definition
+generated-by: aidlc-runner-gen
 description: >
   Run the AI-DLC `scope-definition` stage (ideation phase) in isolation, without
   advancing the main workflow. Packages `/aidlc --stage scope-definition --single`:

@@ -1,5 +1,6 @@
 ---
 name: aidlc-intent-capture
+generated-by: aidlc-runner-gen
 description: >
   Run the AI-DLC `intent-capture` stage (ideation phase) in isolation, without
   advancing the main workflow. Packages `/aidlc --stage intent-capture --single`:

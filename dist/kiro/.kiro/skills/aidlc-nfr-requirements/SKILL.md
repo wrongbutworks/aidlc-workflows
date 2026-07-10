@@ -1,5 +1,6 @@
 ---
 name: aidlc-nfr-requirements
+generated-by: aidlc-runner-gen
 description: >
   Run the AI-DLC `nfr-requirements` stage (construction phase) in isolation, without
   advancing the main workflow. Packages `/aidlc --stage nfr-requirements --single`:

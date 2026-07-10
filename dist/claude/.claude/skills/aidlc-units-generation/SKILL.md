@@ -1,5 +1,6 @@
 ---
 name: aidlc-units-generation
+generated-by: aidlc-runner-gen
 description: >
   Run the AI-DLC `units-generation` stage (inception phase) in isolation, without
   advancing the main workflow. Packages `/aidlc --stage units-generation --single`:

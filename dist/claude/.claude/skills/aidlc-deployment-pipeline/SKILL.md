@@ -1,5 +1,6 @@
 ---
 name: aidlc-deployment-pipeline
+generated-by: aidlc-runner-gen
 description: >
   Run the AI-DLC `deployment-pipeline` stage (operation phase) in isolation, without
   advancing the main workflow. Packages `/aidlc --stage deployment-pipeline --single`:
