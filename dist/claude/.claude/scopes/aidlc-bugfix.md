@@ -6,6 +6,7 @@ keywords:
   - bug
   - broken
 description: Fix a specific bug
+runner: true
 ---
 
 # bugfix scope

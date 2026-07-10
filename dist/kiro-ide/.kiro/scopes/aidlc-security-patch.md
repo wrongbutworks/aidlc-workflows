@@ -7,6 +7,7 @@ keywords:
   - vulnerability
   - patch
 description: CVE response
+runner: true
 ---
 
 # security-patch scope

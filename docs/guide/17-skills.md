@@ -17,7 +17,7 @@ Every command this implementation ships is a skill under `.claude/skills/`. They
 
 - **`/aidlc`** — the full orchestrator. No flags baked in; it detects your scope (or you describe what you want), then drives every stage in your scope to completion. This is the one you reach for most.
 - **Scope-runners** — `/aidlc-bugfix`, `/aidlc-feature`, `/aidlc-mvp`, `/aidlc-security-patch`. Same full workflow, with a scope fixed and scope detection skipped.
-- **Stage-runners** — `/aidlc-application-design`, `/aidlc-code-generation`, and 27 more. Run one stage in isolation, never touching your main workflow.
+- **Stage-runners** — `/aidlc-application-design`, `/aidlc-code-generation`, and 27 more. Run one stage in isolation, never touching your main workflow. Plugin-owned stages use their bare plugin-prefixed command name, such as `/test-pro-integration`.
 - **`/aidlc-init`** — birth the first intent (run the whole Initialization phase) in one step; opt-in packaging over the engine's auto-birth.
 - **Session skills** — `/aidlc-session-cost`, `/aidlc-replay`, `/aidlc-outcomes-pack`. Read-only views over a workflow; covered in [Session Management](11-session-management.md).
 
@@ -50,7 +50,7 @@ You can pass a description and flags straight through, exactly as you would to `
 /aidlc-feature --status
 ```
 
-**Only four scopes ship a runner** — the high-traffic ones. The framework defines nine scopes total (see [Scopes, Depth, and Test Strategy](05-scopes-and-depth.md)); every other one — `enterprise`, `poc`, `infra`, `refactor`, `workshop` — is always reachable through the orchestrator:
+**Only four core scopes ship a runner** — the high-traffic ones marked `runner: true` in their scope files. The framework defines nine scopes total (see [Scopes, Depth, and Test Strategy](05-scopes-and-depth.md)); every other one — `enterprise`, `poc`, `infra`, `refactor`, `workshop` — is always reachable through the orchestrator. Plugin-owned scopes can also set `runner: true`; their runner uses the bare plugin-prefixed scope name, such as `/test-pro-validation`.
 
 ```
 /aidlc --scope enterprise
@@ -124,7 +124,7 @@ To add a stage-runner, add a stage. Write the stage file, recompile the graph, a
 bun .claude/tools/aidlc-runner-gen.ts write
 ```
 
-The generator reads the compiled stage list (the one source of truth) and emits a runner shell per runnable stage. Your new stage's `/aidlc-<your-stage>` command appears automatically — no runner file to author, no boilerplate to copy. Scope-runners work the same way: drop a scope file under `.claude/scopes/`, regenerate, and the runner follows.
+The generator reads the compiled stage list (the one source of truth) and emits a runner shell per runnable stage. Your new stage's `/aidlc-<your-stage>` command appears automatically — no runner file to author, no boilerplate to copy. Scope-runners work the same way for scopes whose frontmatter declares `runner: true`; `scopes --all` emits runners for every scope file.
 
 ```bash
 bun .claude/tools/aidlc-runner-gen.ts scopes      # generate scope-runners

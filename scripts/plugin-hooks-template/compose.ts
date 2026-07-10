@@ -38,6 +38,7 @@ const PROJECT_DIR =
 const HARNESS_LEAF = process.env.AIDLC_HARNESS_DIR || ".claude";
 const HARNESS_DIR = join(PROJECT_DIR, HARNESS_LEAF);
 const STAGES_DIR = join(HARNESS_DIR, "aidlc-common", "stages");
+const SKILLS_DIR = join(HARNESS_DIR, "skills");
 const PHASES = ["initialization", "ideation", "inception", "construction", "operation"];
 
 // The plugin's stable IDENTITY, computed once up front so every per-plugin
@@ -634,20 +635,40 @@ try {
   //    `changed` stays false on reruns, so gating on `changed` alone would make a
   //    failed compile permanent (round-2 major). Detect it by checking the
   //    compiled graph actually contains this plugin's stage slugs.
-  const pluginSlugs: string[] = [];
+  const pluginStages: Array<{ slug: string; phase: string }> = [];
   for (const phase of PHASES) {
     const dir = join(PLUGIN_ROOT, "stages", phase);
     if (!existsSync(dir)) continue;
-    for (const f of readdirSync(dir)) if (f.endsWith(".md")) pluginSlugs.push(f.slice(0, -3));
+    for (const f of readdirSync(dir)) if (f.endsWith(".md")) pluginStages.push({ slug: f.slice(0, -3), phase });
   }
+  const pluginSlugs = pluginStages.map((s) => s.slug);
   const graphPath = join(HARNESS_DIR, "tools", "data", "stage-graph.json");
+  const readGraph = (): Array<{ slug?: string; plugin?: string; phase?: string }> | null => {
+    try {
+      return JSON.parse(readFileSync(graphPath, "utf-8")) as Array<{ slug?: string; plugin?: string; phase?: string }>;
+    } catch { return null; }
+  };
   const graphMissingPluginStage = (() => {
     if (pluginSlugs.length === 0) return false;
-    try {
-      const graph = JSON.parse(readFileSync(graphPath, "utf-8")) as Array<{ slug?: string }>;
-      const present = new Set(graph.map((s) => s.slug));
-      return pluginSlugs.some((s) => !present.has(s));
-    } catch { return true; } // unreadable/absent graph — compile
+    const graph = readGraph();
+    if (graph === null) return true; // unreadable/absent graph — compile
+    const present = new Set(graph.map((s) => s.slug));
+    return pluginSlugs.some((s) => !present.has(s));
+  })();
+  const skillsDirExists = existsSync(SKILLS_DIR);
+  const missingPluginStageRunner = (() => {
+    if (!skillsDirExists || pluginSlugs.length === 0 || graphMissingPluginStage) return false;
+    const graph = readGraph();
+    if (graph === null) return false;
+    const pluginSlugSet = new Set(pluginSlugs);
+    return graph.some((s) =>
+      typeof s.slug === "string" &&
+      pluginSlugSet.has(s.slug) &&
+      typeof s.plugin === "string" &&
+      s.plugin.length > 0 &&
+      s.phase !== "initialization" &&
+      !existsSync(join(SKILLS_DIR, s.slug, "SKILL.md"))
+    );
   })();
   // A contributions-only plugin has no stage slug to detect a missing compile, so
   // the graph-slug check can't see its failed recompile. A persisted retry marker
@@ -659,16 +680,46 @@ try {
   // on one harness never share a marker.
   const retryMarker = join(PROJECT_DIR, "aidlc", `.plugin-compose-retry-${PLUGIN_KEY}`);
   const retryPending = existsSync(retryMarker);
+  let recompiled = false;
   if (changed || graphMissingPluginStage || retryPending) {
     const bun = process.execPath;
     const r = spawnSync(bun, [join(HARNESS_DIR, "tools", "aidlc-graph.ts"), "compile"], {
-      cwd: PROJECT_DIR, encoding: "utf-8",
+      cwd: PROJECT_DIR,
+      encoding: "utf-8",
+      env: { ...process.env, AIDLC_HARNESS_DIR: HARNESS_LEAF },
     });
     if (r.status !== 0) {
       recordDrop(`aidlc-graph compile failed: ${(r.stderr || "").slice(0, 400)}`);
       try { mkdirSync(join(PROJECT_DIR, "aidlc"), { recursive: true }); writeFileSync(retryMarker, new Date().toISOString() + "\n"); } catch { /* best-effort */ }
-    } else if (retryPending) {
-      try { rmSync(retryMarker, { force: true }); } catch { /* best-effort */ }
+    } else {
+      recompiled = true;
+      if (retryPending) {
+        try { rmSync(retryMarker, { force: true }); } catch { /* best-effort */ }
+      }
+    }
+  }
+
+  const pluginShipsScopes = existsSync(join(PLUGIN_ROOT, "scopes"));
+  if (recompiled || missingPluginStageRunner) {
+    if (!skillsDirExists) {
+      recordDrop(`runner regeneration skipped: ${HARNESS_LEAF}/skills not present in this install`, "advisory");
+    } else {
+      const bun = process.execPath;
+      const runnerEnv = { ...process.env, AIDLC_HARNESS_DIR: HARNESS_LEAF };
+      const runRunnerGen = (args: string[], label: string): boolean => {
+        const r = spawnSync(bun, [join(HARNESS_DIR, "tools", "aidlc-runner-gen.ts"), ...args], {
+          cwd: PROJECT_DIR,
+          encoding: "utf-8",
+          env: runnerEnv,
+        });
+        if (r.status !== 0) {
+          recordDrop(`aidlc-runner-gen ${label} failed: ${(r.stderr || r.stdout || "").slice(0, 400)}`);
+          return false;
+        }
+        return true;
+      };
+      runRunnerGen(["write"], "write");
+      if (pluginShipsScopes) runRunnerGen(["scopes"], "scopes");
     }
   }
 } catch (e) {

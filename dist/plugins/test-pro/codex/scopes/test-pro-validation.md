@@ -7,6 +7,7 @@ keywords:
   - test validation
   - regression validation
 description: Run the test-pro validation stages
+runner: true
 ---
 
 # test-pro-validation scope

@@ -106,6 +106,7 @@ A scope is authored as a file (its identity) plus a per-stage membership tag. Th
    - `keywords` (optional): NL triggers for `/aidlc <freeform text>` auto-detection. Word-boundary matched, alphabetical-scope tie-break. Empty list opts out of inference.
    - `description` (optional): one-line summary rendered in `/aidlc --help` and in SKILL.md's compiled scope-table.
    - `testStrategy` (optional): override test strategy independent of depth (e.g. `Minimal` for workshop). Defaults to matching depth.
+   - `runner` (optional): set `true` to include the scope in the default generated runner set.
 
    The body is prose intent — "why these stages, why skip those". `validScopes()` derives from `.claude/scopes/*.md` presence, so the scope is valid the moment the file lands. Run `/aidlc --doctor` after editing to catch structural issues.
 
@@ -117,6 +118,7 @@ A scope is authored as a file (its identity) plus a per-stage membership tag. Th
      - hotfix
      - urgent
    description: Urgent production fix
+   runner: true
    ---
 
    # hotfix scope
@@ -156,7 +158,7 @@ A scope is authored as a file (its identity) plus a per-stage membership tag. Th
 
 ## Adding a Stage
 
-A stage is authored as a Markdown file with YAML frontmatter under `core/aidlc-common/stages/<phase>/<slug>.md`. The compiler reads the frontmatter into `tools/data/stage-graph.json`, and the runner generator emits a typeable `/aidlc-<slug>` skill from the compiled stage list. The extensibility contract is "to add a stage, write a stage file" — no engine edit is required to register it, because the engine routes off the compiled graph. (The full field reference and the three-compartment body format live in the Harness Engineer Guide's [Anatomy of a Stage](../harness-engineering/01-anatomy-of-a-stage.md) and [Adding a Stage](../harness-engineering/02-adding-a-stage.md); the schema is [Stage Definition](15-stage-definition.md).)
+A stage is authored as a Markdown file with YAML frontmatter under `core/aidlc-common/stages/<phase>/<slug>.md`. The compiler reads the frontmatter into `tools/data/stage-graph.json`, and the runner generator emits a typeable `/aidlc-<slug>` skill from the compiled stage list for core stages (plugin-owned stages use their bare plugin-prefixed slug). The extensibility contract is "to add a stage, write a stage file" — no engine edit is required to register it, because the engine routes off the compiled graph. (The full field reference and the three-compartment body format live in the Harness Engineer Guide's [Anatomy of a Stage](../harness-engineering/01-anatomy-of-a-stage.md) and [Adding a Stage](../harness-engineering/02-adding-a-stage.md); the schema is [Stage Definition](15-stage-definition.md).)
 
 ### Steps
 

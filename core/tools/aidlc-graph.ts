@@ -120,6 +120,7 @@ export interface SensorResolution {
 // runtime callers stay source-compatible without caring about the
 // extended shape.
 export interface GraphStage extends StageEntry {
+  plugin?: string;
   condition?: string;
   produces: string[];
   // optional_produces - artifacts the stage MAY write per unit (marked
@@ -376,6 +377,7 @@ const FIELD_ORDER = [
   "slug",
   "number",
   "name",
+  "plugin",
   "phase",
   "execution",
   "condition",
@@ -1451,6 +1453,19 @@ export function compileStageGraph(): {
         );
       }
       const slug = validation.data.slug;
+      const plugin = validation.data.plugin;
+      if (plugin !== undefined) {
+        if (plugin === "aidlc") {
+          throw new Error(
+            `${filePath}: stage "${slug}" declares plugin "aidlc"; omit plugin for core stages.`
+          );
+        }
+        if (!slug.startsWith(`${plugin}-`)) {
+          throw new Error(
+            `${filePath}: stage "${slug}" declares plugin "${plugin}", but plugin-owned stage slugs must start with "${plugin}-". Rename the slug or fix the plugin field.`
+          );
+        }
+      }
 
       // Duplicate-slug guard: two YAML files claiming the same slug would
       // silently produce a corrupt graph (two rows, findStageBySlug returns
@@ -1603,6 +1618,9 @@ function buildGraphStage(
     // discipline as rules_in_context — REQUIRED on GraphStage.
     sensors_applicable: [],
   };
+  if (parsed.plugin !== undefined) {
+    stage.plugin = parsed.plugin;
+  }
   if (parsed.condition !== undefined) {
     stage.condition = parsed.condition;
   }

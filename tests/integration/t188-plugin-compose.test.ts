@@ -76,6 +76,7 @@ describe("t188 plugin compose — emit + compose the contribution seam", () => {
   let tmp: string;
   let project: string;
   let pluginBuilt: string;
+  let coreRunnerBefore: string;
 
   beforeAll(() => {
     tmp = mkdtempSync(join(tmpdir(), "aidlc-t188-"));
@@ -95,6 +96,10 @@ describe("t188 plugin compose — emit + compose the contribution seam", () => {
     // 2. Fresh base project = a copy of dist/claude/.claude (read-only source).
     project = join(tmp, "proj");
     cpSync(CLAUDE_DIST, join(project, ".claude"), { recursive: true });
+    coreRunnerBefore = readFileSync(
+      join(project, ".claude", "skills", "aidlc-code-generation", "SKILL.md"),
+      "utf-8",
+    );
 
     // 3. Run the real compose hook (as a host SessionStart hook would).
     const compose = spawnSync(BUN, [join(pluginBuilt, "hooks", "compose.ts")], {
@@ -146,6 +151,17 @@ describe("t188 plugin compose — emit + compose the contribution seam", () => {
     expect(existsSync(join(project, ".claude", "scopes", "test-pro-validation.md"))).toBe(true);
     expect(existsSync(join(project, ".claude", "agents", "test-pro-metrics-agent.md"))).toBe(true);
     expect(existsSync(join(project, ".claude", "knowledge", "test-pro-metrics-agent", "methodology.md"))).toBe(true);
+  });
+
+  test("compose regenerates plugin runner skills and preserves core runner bytes", () => {
+    const stageRunner = join(project, ".claude", "skills", "test-pro-integration", "SKILL.md");
+    const scopeRunner = join(project, ".claude", "skills", "test-pro-validation", "SKILL.md");
+    expect(existsSync(stageRunner)).toBe(true);
+    expect(existsSync(scopeRunner)).toBe(true);
+    expect(readFileSync(stageRunner, "utf-8")).toContain("from the test-pro plugin");
+    expect(readFileSync(scopeRunner, "utf-8")).toContain("name: test-pro-validation");
+    expect(readFileSync(join(project, ".claude", "skills", "aidlc-code-generation", "SKILL.md"), "utf-8"))
+      .toBe(coreRunnerBefore);
   });
 
   test("composed plugin stage bodies are not empty", () => {

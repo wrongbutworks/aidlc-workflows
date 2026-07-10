@@ -24,6 +24,7 @@ export interface StageEntry {
   // Existing callers read only the 8 required fields above; optional
   // additions are source-compatible. Library code that needs these
   // fields uses the GraphStage type in aidlc-graph.ts (required there).
+  plugin?: string;
   condition?: string;
   produces?: string[];
   // Artifacts the stage MAY write per unit; exempt from the per-unit
@@ -86,6 +87,8 @@ export interface ScopeDefinition {
   testStrategy?: string;
   keywords?: string[];
   description?: string;
+  plugin?: string;
+  runner?: boolean;
 }
 
 export type CheckboxState = "pending" | "in-progress" | "awaiting-approval" | "revising" | "completed" | "skipped";
@@ -2976,10 +2979,12 @@ export function loadStageGraph(): StageEntry[] {
 // EXECUTE/SKIP `.stages` half comes from the compiled grid. Cached.
 interface ScopeMetadata {
   name: string;
+  plugin?: string;
   depth: string;
   description: string;
   keywords: string[];
   testStrategy?: string;
+  runner?: boolean;
 }
 
 let _scopeMetadata: Record<string, ScopeMetadata> | null = null;
@@ -3037,8 +3042,12 @@ export function loadScopeMetadata(): Record<string, ScopeMetadata> {
       description: scalarField(fm, "description"),
       keywords: listField(fm, "keywords"),
     };
+    const plugin = scalarField(fm, "plugin");
+    if (plugin) meta.plugin = plugin;
     const ts = scalarField(fm, "testStrategy");
     if (ts) meta.testStrategy = ts;
+    const runner = scalarField(fm, "runner");
+    if (runner === "true" || runner === "false") meta.runner = runner === "true";
     out[name] = meta;
   }
   _scopeMetadata = out;
@@ -3095,6 +3104,8 @@ export function loadScopeMapping(): Record<string, ScopeDefinition> {
       description: meta.description,
     };
     if (meta.testStrategy !== undefined) def.testStrategy = meta.testStrategy;
+    if (meta.plugin !== undefined) def.plugin = meta.plugin;
+    if (meta.runner !== undefined) def.runner = meta.runner;
     out[name] = def;
   }
   _scopeMapping = out;
