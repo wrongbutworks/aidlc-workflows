@@ -298,6 +298,46 @@ function walk(dir: string): string[] {
   return out;
 }
 
+type CopyPrecheck = (ctx: { file: string; rel: string; dest: string; content: string }) => boolean;
+
+function frontmatterName(content: string): string | null {
+  const name = frontmatter(content).match(/^name:\s*(.+)$/m)?.[1].trim();
+  return name || null;
+}
+
+function installedNameRoster(dir: string): Map<string, string> {
+  const out = new Map<string, string>();
+  if (!existsSync(dir)) return out;
+  for (const file of readdirSync(dir).filter((f) => f.endsWith(".md")).sort()) {
+    const path = join(dir, file);
+    try {
+      if (statSync(path).isDirectory()) continue;
+      const name = frontmatterName(readFileSync(path, "utf-8"));
+      if (name && !out.has(name)) out.set(name, path);
+    } catch {
+      // Installed loader owns malformed-file handling. Compose only needs the
+      // parseable names for no-clobber by frontmatter name.
+    }
+  }
+  return out;
+}
+
+function installedNameCollisionPrecheck(dst: string, kind: "agents" | "scopes"): CopyPrecheck {
+  const installedByName = installedNameRoster(dst);
+  return ({ file, rel, dest, content }) => {
+    if (!file.endsWith(".md")) return true;
+    const name = frontmatterName(content);
+    if (!name) return true;
+    const collidingFile = installedByName.get(name);
+    if (!collidingFile || collidingFile === dest) return true;
+    recordDrop(
+      `plugin "${PLUGIN_NAME}" ${kind} file "${relative(PLUGIN_ROOT, file)}" declares name "${name}", colliding with installed file "${relative(PROJECT_DIR, collidingFile)}"; not copied`,
+      "degraded",
+    );
+    return false;
+  };
+}
+
 // No-clobber copy of one tree into another, with {{HARNESS_DIR}} substitution on
 // .md prose. NEVER overwrites an existing dest (portable no-clobber — the point
 // of the former `cp -n`, done right). Returns true if anything was written.
@@ -306,7 +346,7 @@ function walk(dir: string): string[] {
 // trying to ship a file that shadows core or another plugin) and is dropped-with-
 // log — silently skipping it made a plugin "override" a no-op with no evidence
 // (round-4). An identical dest is a benign idempotent re-run (no log).
-function copyTreeNoClobber(src: string, dst: string, kind: string): boolean {
+function copyTreeNoClobber(src: string, dst: string, kind: string, precheck?: CopyPrecheck): boolean {
   if (!existsSync(src)) return false;
   let wrote = false;
   for (const file of walk(src)) {
@@ -324,6 +364,7 @@ function copyTreeNoClobber(src: string, dst: string, kind: string): boolean {
       }
       continue;
     }
+    if (precheck && !precheck({ file, rel, dest, content: buf.toString("utf-8") })) continue;
     mkdirSync(join(dest, ".."), { recursive: true });
     writeFileSync(dest, buf);
     wrote = true;
@@ -555,8 +596,10 @@ try {
     );
   } else {
     changed = copyTreeNoClobber(join(PLUGIN_ROOT, "stages"), STAGES_DIR, "stage") || changed;
-    changed = copyTreeNoClobber(join(PLUGIN_ROOT, "scopes"), join(HARNESS_DIR, "scopes"), "scopes") || changed;
-    changed = copyTreeNoClobber(join(PLUGIN_ROOT, "agents"), join(HARNESS_DIR, "agents"), "agents") || changed;
+    const scopesDir = join(HARNESS_DIR, "scopes");
+    const agentsDir = join(HARNESS_DIR, "agents");
+    changed = copyTreeNoClobber(join(PLUGIN_ROOT, "scopes"), scopesDir, "scopes", installedNameCollisionPrecheck(scopesDir, "scopes")) || changed;
+    changed = copyTreeNoClobber(join(PLUGIN_ROOT, "agents"), agentsDir, "agents", installedNameCollisionPrecheck(agentsDir, "agents")) || changed;
   }
   changed = copyTreeNoClobber(join(PLUGIN_ROOT, "knowledge"), join(HARNESS_DIR, "knowledge"), "knowledge") || changed;
   changed = copyTreeNoClobber(join(PLUGIN_ROOT, "sensors"), join(HARNESS_DIR, "sensors"), "sensor") || changed;

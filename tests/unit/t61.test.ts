@@ -153,13 +153,18 @@ model: opus
 }
 
 /** Spawn the PER-PROJECT statusline hook with the workspace JSON on stdin. Mirrors `echo {...} | bun "$HOOK"`. */
-function runStatusline(p: string): string {
+function runStatuslineResult(p: string): { status: number | null; out: string } {
   const hook = join(p, ".claude", "hooks", "aidlc-statusline.ts");
   const res = spawnSync(BUN, [hook], {
+    cwd: p,
     encoding: "utf-8",
     input: JSON.stringify({ workspace: { project_dir: p } }),
   });
-  return `${res.stdout ?? ""}${res.stderr ?? ""}`;
+  return { status: res.status, out: `${res.stdout ?? ""}${res.stderr ?? ""}` };
+}
+
+function runStatusline(p: string): string {
+  return runStatuslineResult(p).out;
 }
 
 /** Seed a CONSTRUCTION/ci-pipeline state file naming the given active-agent slug. Mirrors the .sh heredoc + sed swap. */
@@ -307,6 +312,33 @@ describe("t61 agent-metadata derived from frontmatter (migrated from t61-agent-m
     seedState(p, "fixture-agent");
     const out = runStatusline(p);
     expect(out).toContain("Fixture Agent");
+  });
+
+  test("5c: statusline falls back to the agent slug when duplicate agent names break loadAgents()", () => {
+    const p = projWithRecord();
+    writeFixtureAgent(p);
+    writeFileSync(
+      join(p, ".claude", "agents", "duplicate-fixture-agent.md"),
+      `---
+name: fixture-agent
+display_name: Duplicate Fixture Agent
+examples: []
+description: Duplicate fixture agent for statusline fallback.
+disallowedTools: Task
+model: opus
+---
+
+Duplicate fixture agent body.
+`,
+      "utf-8",
+    );
+    seedState(p, "fixture-agent");
+    const { status, out } = runStatuslineResult(p);
+    expect(status).toBe(0);
+    expect(out).toContain("[AIDLC]");
+    expect(out).toContain("fixture-agent");
+    expect(out).not.toContain("Fixture Agent");
+    expect(out).not.toContain("Duplicate Fixture Agent");
   });
 });
 

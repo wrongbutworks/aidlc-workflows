@@ -541,6 +541,52 @@ describe("t188 plugin compose — emit + compose the contribution seam", () => {
     expect(drops).toContain(`knowledge "test-pro-metrics-agent/methodology.md" collides`);
   });
 
+  test("agent frontmatter name collision is dropped before copy and install remains usable", () => {
+    const { drops, proj } = composeSynthetic("syn-agent-name", {
+      "agents/x-unique-file.md": [
+        "---",
+        "name: aidlc-quality-agent",
+        "display_name: Synthetic Quality Agent",
+        "plugin: syn-agent-name",
+        "examples: []",
+        "description: Synthetic duplicate agent name fixture.",
+        "disallowedTools: Task",
+        "model: sonnet",
+        "---",
+        "",
+        "# Synthetic Quality Agent",
+        "",
+      ].join("\n"),
+    });
+
+    expect(existsSync(join(proj, ".claude", "agents", "x-unique-file.md"))).toBe(false);
+    expect(drops).toContain("[degraded]");
+    expect(drops).toContain('plugin "syn-agent-name"');
+    expect(drops).toContain("agents/x-unique-file.md");
+    expect(drops).toContain("aidlc-quality-agent");
+    expect(drops).toContain("aidlc-quality-agent.md");
+
+    const compile = spawnSync(BUN, [join(proj, ".claude", "tools", "aidlc-graph.ts"), "compile"], {
+      cwd: proj,
+      encoding: "utf-8",
+      timeout: TIMEOUT_MS - 5_000,
+      env: { ...process.env, AIDLC_HARNESS_DIR: ".claude" },
+    });
+    if (compile.status !== 0) throw new Error(`graph compile failed: ${compile.stderr || compile.stdout}`);
+    expect(compile.status).toBe(0);
+
+    const statusline = spawnSync(BUN, [join(proj, ".claude", "hooks", "aidlc-statusline.ts")], {
+      cwd: proj,
+      encoding: "utf-8",
+      input: JSON.stringify({ workspace: { project_dir: proj } }),
+      timeout: TIMEOUT_MS - 5_000,
+      env: { ...process.env, CLAUDE_PROJECT_DIR: proj, AIDLC_HARNESS_DIR: ".claude" },
+    });
+    if (statusline.status !== 0) throw new Error(`statusline failed: ${statusline.stderr || statusline.stdout}`);
+    expect(statusline.status).toBe(0);
+    expect(statusline.stdout).toContain("[AIDLC]");
+  });
+
   // --- Silent-failure seams (round-5): fence-awareness, leftover blocks, BOM ---
   test("a ## fragment: line inside a code fence is NOT a delimiter (R5-C1)", () => {
     // A fragment whose prose documents the fragment format inside a ``` fence must

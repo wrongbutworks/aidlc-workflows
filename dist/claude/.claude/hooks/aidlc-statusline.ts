@@ -103,7 +103,12 @@ let _agentDisplayCache: Record<string, string> | null = null;
 function agentDisplayMap(): Record<string, string> {
   if (!_agentDisplayCache) {
     const map: Record<string, string> = { orchestrator: "Orchestrator" };
-    for (const a of loadAgents()) map[a.slug] = a.display_name;
+    try {
+      for (const a of loadAgents()) map[a.slug] = a.display_name;
+    } catch {
+      // Hooks fail open in this repo by design: a broken agent roster must
+      // never kill the statusline.
+    }
     _agentDisplayCache = map;
   }
   return _agentDisplayCache;
