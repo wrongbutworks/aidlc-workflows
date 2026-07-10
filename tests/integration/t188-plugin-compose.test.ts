@@ -318,6 +318,62 @@ describe("t188 plugin compose — emit + compose the contribution seam", () => {
     expect(slugs).toContain("test-pro-full-suite");
   });
 
+  describe("old installed schema without plugin ownership key", () => {
+    test("skips plugin-owned stages scopes agents without a retry marker", () => {
+      const legacyProj = mkdtempSync(join(tmp, "legacy-plugin-key-"));
+      cpSync(CLAUDE_DIST, join(legacyProj, ".claude"), { recursive: true });
+
+      const schemaPath = join(legacyProj, ".claude", "tools", "aidlc-stage-schema.ts");
+      const schemaBefore = readFileSync(schemaPath, "utf-8");
+      const schemaAfter = schemaBefore.replace('"plugin", ', "");
+      expect(schemaAfter).not.toBe(schemaBefore);
+      writeFileSync(schemaPath, schemaAfter);
+
+      const compose = spawnSync(BUN, [join(pluginBuilt, "hooks", "compose.ts")], {
+        cwd: legacyProj,
+        encoding: "utf-8",
+        timeout: TIMEOUT_MS - 5_000,
+        env: {
+          ...process.env,
+          CLAUDE_PLUGIN_ROOT: pluginBuilt,
+          CLAUDE_PROJECT_DIR: legacyProj,
+          AIDLC_HARNESS_DIR: ".claude",
+        },
+      });
+      if (compose.status !== 0) throw new Error(`compose.ts failed: ${compose.stderr}`);
+
+      expect(existsSync(stageSourcePath(legacyProj, "construction", "test-pro-integration"))).toBe(false);
+      expect(existsSync(stageSourcePath(legacyProj, "operation", "test-pro-full-suite"))).toBe(false);
+      expect(existsSync(join(legacyProj, ".claude", "scopes", "test-pro-validation.md"))).toBe(false);
+      expect(existsSync(join(legacyProj, ".claude", "agents", "test-pro-metrics-agent.md"))).toBe(false);
+
+      const dropsPath = join(
+        legacyProj,
+        "aidlc",
+        "spaces",
+        "default",
+        "intents",
+        ".aidlc-hooks-health",
+        "plugin-compose-test-pro.drops",
+      );
+      expect(existsSync(dropsPath)).toBe(true);
+      const drops = readFileSync(dropsPath, "utf-8");
+      expect(drops).toContain("[degraded]");
+      expect(drops).toContain("predates the plugin:");
+
+      expect(existsSync(join(legacyProj, "aidlc", ".plugin-compose-retry-test-pro"))).toBe(false);
+
+      const compile = spawnSync(BUN, [join(legacyProj, ".claude", "tools", "aidlc-graph.ts"), "compile"], {
+        cwd: legacyProj,
+        encoding: "utf-8",
+        timeout: TIMEOUT_MS - 5_000,
+        env: { ...process.env, AIDLC_HARNESS_DIR: ".claude" },
+      });
+      if (compile.status !== 0) throw new Error(`legacy graph compile failed: ${compile.stderr || compile.stdout}`);
+      expect(compile.status).toBe(0);
+    });
+  });
+
   // --- Retry-marker keyed by plugin identity, not harness leaf ---
   test("two plugins on the same harness get distinct retry markers", () => {
     // The retry marker is keyed by the plugin's manifest name, NOT the plugin-root

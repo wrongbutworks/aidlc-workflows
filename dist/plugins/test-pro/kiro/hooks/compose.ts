@@ -543,13 +543,21 @@ function spliceFragment(content: string, f: Fragment, target: string): string {
 
 let changed = false;
 try {
+  const pluginKeySafe = await installedSchemaAccepts("plugin", "probe-name");
+
   // 1. Copy NEW primitives (no-clobber, token-substituted).
   // Plugin scopes and agents use the plugin prefix in place of core's `aidlc-`
   // prefix: scopes/<plugin>-<name>.md and agents/<plugin>-<role>-agent.md, with
   // the filename stem equal to frontmatter `name`.
-  changed = copyTreeNoClobber(join(PLUGIN_ROOT, "stages"), STAGES_DIR, "stage") || changed;
-  changed = copyTreeNoClobber(join(PLUGIN_ROOT, "scopes"), join(HARNESS_DIR, "scopes"), "scopes") || changed;
-  changed = copyTreeNoClobber(join(PLUGIN_ROOT, "agents"), join(HARNESS_DIR, "agents"), "agents") || changed;
+  if (!pluginKeySafe) {
+    recordDrop(
+      "plugin-owned stages/scopes/agents not composed: installed engine predates the plugin: ownership key - re-copy your dist/<harness>/ shell, then re-run compose",
+    );
+  } else {
+    changed = copyTreeNoClobber(join(PLUGIN_ROOT, "stages"), STAGES_DIR, "stage") || changed;
+    changed = copyTreeNoClobber(join(PLUGIN_ROOT, "scopes"), join(HARNESS_DIR, "scopes"), "scopes") || changed;
+    changed = copyTreeNoClobber(join(PLUGIN_ROOT, "agents"), join(HARNESS_DIR, "agents"), "agents") || changed;
+  }
   changed = copyTreeNoClobber(join(PLUGIN_ROOT, "knowledge"), join(HARNESS_DIR, "knowledge"), "knowledge") || changed;
   changed = copyTreeNoClobber(join(PLUGIN_ROOT, "sensors"), join(HARNESS_DIR, "sensors"), "sensor") || changed;
   changed = copyTreeNoClobber(join(PLUGIN_ROOT, "tools"), join(HARNESS_DIR, "tools"), "tool") || changed;
@@ -818,7 +826,9 @@ try {
     });
     if (r.status !== 0) {
       recordDrop(`aidlc-graph compile failed: ${(r.stderr || "").slice(0, 400)}`);
-      try { mkdirSync(join(PROJECT_DIR, "aidlc"), { recursive: true }); writeFileSync(retryMarker, new Date().toISOString() + "\n"); } catch { /* best-effort */ }
+      if (pluginKeySafe) {
+        try { mkdirSync(join(PROJECT_DIR, "aidlc"), { recursive: true }); writeFileSync(retryMarker, new Date().toISOString() + "\n"); } catch { /* best-effort */ }
+      }
     } else {
       recompiled = true;
       if (retryPending) {
