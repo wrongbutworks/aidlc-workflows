@@ -27,14 +27,14 @@ event sequence anyway.
 
 ## Walking Skeleton
 
-We always run the walking-skeleton Bolt **first** when our scope is
-greenfield (`mvp`, `enterprise`, `feature`, `poc`, `workshop`, `infra`).
-Bolt 1 is solo, gated, and the user explicitly approves before remaining
-Bolts run.
+When practices are scope-dependent, we run the walking-skeleton Bolt
+**first** only when the active scope file declares `skeleton: on`. Bolt 1
+is solo, gated, and the user explicitly approves before remaining Bolts
+run.
 
-We **skip the skeleton ceremony** when our scope is incremental work on
-an existing codebase (`bugfix`, `refactor`, `security-patch`). The first
-Bolt runs like any other — there's nothing to bootstrap.
+We **skip the skeleton ceremony** when the active scope file declares
+`skeleton: off`. The first Bolt runs like any other — there's nothing to
+bootstrap.
 
 After Bolt 1 ships (when it runs), the orchestrator fires the **ladder
 prompt**: "How should the remaining Bolts run?" Options: continue

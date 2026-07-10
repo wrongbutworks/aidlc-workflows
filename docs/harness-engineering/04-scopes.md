@@ -20,6 +20,7 @@ name: feature
 depth: Standard
 keywords: []
 description: Default for new features, practical depth
+skeleton: on
 ---
 
 # feature scope
@@ -36,9 +37,20 @@ The frontmatter fields divide into one required field and three optional knobs:
 | `testStrategy` | No | Overrides test volume independent of depth. Defaults to matching `depth`. |
 | `keywords` | No | Natural-language triggers for `/aidlc <freeform text>` auto-detection. Empty list opts out. |
 | `description` | No | The one-liner rendered in `/aidlc --help`. (The compiled scope-table in SKILL.md shows only Scope / Depth / TestStrategy / EXECUTE / Total, leaving the description out.) |
+| `skeleton` | No | `on` opts the scope into the walking-skeleton ceremony when practices are scope-dependent; `off` or absence opts out. |
 
 The loader rejects duplicate scope `name` values across files and names both
 files in the error.
+
+### Walking-skeleton default
+
+The optional `skeleton:` field controls the scope-dependent walking-skeleton
+stance. `skeleton: on` means that when the team's `## Walking Skeleton`
+practices resolve to `scope-dependent`, Construction opens with the
+walking-skeleton ceremony for this scope. `skeleton: off` means the first Bolt
+runs as a regular Bolt. Absence defaults to off, so composed/runtime-approved
+scopes and plugin scopes do not conjure a skeleton Bolt unless they opt in
+explicitly.
 
 **2. The membership tag — each stage's `scopes:` frontmatter.** A stage names the scopes it runs under in its own frontmatter, in `core/aidlc-common/stages/<phase>/<slug>.md`:
 
@@ -73,7 +85,7 @@ Suppose your team wants a `hotfix` scope — leaner than `bugfix`, for the urgen
 
 ### Steps
 
-1. **Drop `core/scopes/aidlc-hotfix.md`.** Copy `aidlc-bugfix.md` (the closest existing scope) and edit the frontmatter: set `name: hotfix`, pick `depth`, add `keywords` if you want freeform auto-detection (`[hotfix, urgent]`), a `description` for the help text, and `testStrategy` only if it should diverge from `depth`. Write a short prose body explaining the intent.
+1. **Drop `core/scopes/aidlc-hotfix.md`.** Copy `aidlc-bugfix.md` (the closest existing scope) and edit the frontmatter: set `name: hotfix`, pick `depth`, add `keywords` if you want freeform auto-detection (`[hotfix, urgent]`), a `description` for the help text, `skeleton: on|off` for the scope-dependent Construction ceremony default, and `testStrategy` only if it should diverge from `depth`. Write a short prose body explaining the intent.
 
 2. **Tag the stages that should run under `hotfix`.** In each stage you want `EXECUTE` (under `core/aidlc-common/stages/<phase>/`), add `hotfix` to its frontmatter `scopes:` list. A stage you don't tag is `SKIP` for the scope. The 3 initialization stages must include it (they always run).
 

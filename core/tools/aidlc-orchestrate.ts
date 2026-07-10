@@ -94,6 +94,7 @@ import {
   intentRepos,
   isPerUnitStage,
   listIntents,
+  loadScopeMetadata,
   loadScopeMapping,
   nextInScopeStage,
   parseBoltDag,
@@ -551,9 +552,11 @@ function resolveScope(
   if (flags.scope && flags.scope.length > 0) {
     return { scope: flags.scope, source: "flag" };
   }
-  const envScope = process.env.AWS_AIDLC_DEFAULT_SCOPE;
-  if (envScope && envScope.length > 0) {
-    return { scope: envScope, source: "env" };
+  const envScope = (process.env.AWS_AIDLC_DEFAULT_SCOPE || "").trim();
+  if (envScope.length > 0) {
+    if (validScopes().has(envScope)) return { scope: envScope, source: "env" };
+    const fallback = selectionAwareDefaultScope(envScope);
+    return { scope: fallback.scope, source: "env", error: fallback.error };
   }
   const fallback = selectionAwareDefaultScope(DEFAULT_SCOPE);
   return { scope: fallback.scope, source: "default", error: fallback.error };
@@ -666,23 +669,6 @@ const VALID_SKELETON_STANCES: ReadonlySet<string> = new Set([
   "on",
   "off",
   "scope-dependent",
-]);
-
-// The scope-mapping fallback the "scope-dependent" stance resolves through
-// (SKILL.md:686-692, verbatim): skeleton-on for greenfield-shaped scopes,
-// skeleton-off for incremental-work scopes. `infra` is greenfield-shaped, so it
-// is skeleton-on — and it DOES reach the skeleton gate: its first in-scope
-// construction stage is `nfr-requirements` (code-generation is SKIP for infra,
-// but nfr-requirements EXECUTEs and is what isSkeletonGateStage matches), so an
-// `infra` Construction workflow emits gate:"unresolved" at nfr-requirements and
-// resolves through this set like any other greenfield scope.
-const SKELETON_ON_SCOPES: ReadonlySet<string> = new Set([
-  "enterprise",
-  "mvp",
-  "feature",
-  "poc",
-  "workshop",
-  "infra",
 ]);
 
 // Read the recorded skeleton stance from state, or null if the round-trip has
@@ -866,6 +852,14 @@ function isSkeletonGateStage(node: GraphStage, scope: string): boolean {
   return first !== null && first.slug === node.slug;
 }
 
+function scopeDefaultSkeletonStance(scope: string): SkeletonStance {
+  try {
+    return loadScopeMetadata()[scope]?.skeleton === true ? "on" : "off";
+  } catch {
+    return "off";
+  }
+}
+
 // Resolve the determined boolean gate for the skeleton-gate stage once the
 // conductor's classified stance is in hand. The round-trip's whole point is to
 // turn "unresolved" into a DETERMINED boolean; this function is that resolution.
@@ -903,12 +897,11 @@ function resolveSkeletonGate(stance: SkeletonStance, scope: string): boolean {
       // Bolt 1 (autonomy is gated until the post-Bolt-1 ladder sets it).
       return true;
     case "scope-dependent": {
-      // Fall back to the scope-mapping defaults to SELECT the ceremony
-      // (greenfield → skeleton-on, incremental → skeleton-off); either ceremony
-      // presents a gate at Bolt 1, so the determined gate is true regardless.
-      const _ceremony: SkeletonStance = SKELETON_ON_SCOPES.has(scope)
-        ? "on"
-        : "off";
+      // Fall back to the active scope's metadata to SELECT the ceremony.
+      // Missing metadata is skeleton-off; composed/runtime-approved scopes
+      // reshape an existing plan and must opt in explicitly to conjure a
+      // walking-skeleton Bolt.
+      const _ceremony = scopeDefaultSkeletonStance(scope);
       return resolveSkeletonGate(_ceremony, scope);
     }
   }

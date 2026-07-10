@@ -7,6 +7,7 @@ keywords:
   - vulnerability
   - patch
 description: CVE response
+skeleton: off
 runner: true
 ---
 

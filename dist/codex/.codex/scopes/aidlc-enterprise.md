@@ -3,6 +3,7 @@ name: enterprise
 depth: Comprehensive
 keywords: []
 description: Regulated enterprise feature, full audit trail
+skeleton: on
 ---
 
 # enterprise scope

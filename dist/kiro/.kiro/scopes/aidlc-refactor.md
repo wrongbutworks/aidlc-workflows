@@ -6,6 +6,7 @@ keywords:
   - clean up
   - simplify
 description: Clean up existing code
+skeleton: off
 ---
 
 # refactor scope

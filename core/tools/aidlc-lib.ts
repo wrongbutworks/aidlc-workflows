@@ -93,6 +93,7 @@ export interface ScopeDefinition {
   description?: string;
   plugin?: string;
   runner?: boolean;
+  skeleton?: boolean;
 }
 
 export type CheckboxState = "pending" | "in-progress" | "awaiting-approval" | "revising" | "completed" | "skipped";
@@ -3052,6 +3053,7 @@ interface ScopeMetadata {
   keywords: string[];
   testStrategy?: string;
   runner?: boolean;
+  skeleton: boolean;
 }
 
 let _scopeMetadata: Record<string, ScopeMetadata> | null = null;
@@ -3118,6 +3120,7 @@ export function loadScopeMetadataAll(): Record<string, ScopeMetadata> {
       depth: scalarField(fm, "depth"),
       description: scalarField(fm, "description"),
       keywords: listField(fm, "keywords"),
+      skeleton: false,
     };
     const plugin = scalarField(fm, "plugin");
     if (plugin) meta.plugin = plugin;
@@ -3125,6 +3128,15 @@ export function loadScopeMetadataAll(): Record<string, ScopeMetadata> {
     if (ts) meta.testStrategy = ts;
     const runner = scalarField(fm, "runner");
     if (runner === "true" || runner === "false") meta.runner = runner === "true";
+    const skeleton = scalarField(fm, "skeleton");
+    if (skeleton) {
+      if (skeleton !== "on" && skeleton !== "off") {
+        throw new Error(
+          `Scope file ${filePath} has invalid skeleton value "${skeleton}". Expected "on" or "off".`
+        );
+      }
+      meta.skeleton = skeleton === "on";
+    }
     out[name] = meta;
   }
   _scopeMetadataAll = out;
@@ -3200,6 +3212,7 @@ export function loadScopeMapping(): Record<string, ScopeDefinition> {
     if (meta.testStrategy !== undefined) def.testStrategy = meta.testStrategy;
     if (meta.plugin !== undefined) def.plugin = meta.plugin;
     if (meta.runner !== undefined) def.runner = meta.runner;
+    def.skeleton = meta.skeleton;
     out[name] = def;
   }
   _scopeMapping = out;
@@ -3255,18 +3268,22 @@ export function selectionAwareDefaultScope(preferred = "feature"): DefaultScopeR
     scopesByPlugin.set(owner, bucket);
   }
 
-  if (scopesByPlugin.size === 1) {
-    const only = [...scopesByPlugin.values()][0].sort();
+  const coreScopes = scopesByPlugin.get("aidlc") ?? [];
+  const pluginOwners = [...scopesByPlugin.keys()].filter((owner) => owner !== "aidlc").sort();
+
+  if (coreScopes.length === 0 && pluginOwners.length === 1) {
+    const only = [...(scopesByPlugin.get(pluginOwners[0]) ?? [])].sort();
     if (only.length > 0) return { scope: only[0] };
   }
 
-  const owners = [...scopesByPlugin.keys()].sort();
   return {
     scope: preferred,
     error:
-      owners.length === 0
+      scopes.length === 0
         ? `No default scope is available: core scope "${preferred}" is disabled or absent and no plugin scopes are enabled. Pass --scope explicitly.`
-        : `No default scope is available: core scope "${preferred}" is disabled or absent and multiple plugin scope owners are enabled (${owners.join(", ")}). Pass --scope explicitly.`,
+        : coreScopes.length > 0
+          ? `No default scope is available: scope "${preferred}" is disabled or absent while core scopes are enabled. Pass --scope explicitly.`
+          : `No default scope is available: core scope "${preferred}" is disabled or absent and multiple plugin scope owners are enabled (${pluginOwners.join(", ")}). Pass --scope explicitly.`,
   };
 }
 

@@ -6,6 +6,7 @@ keywords:
   - deploy
   - infra
 description: Infrastructure changes
+skeleton: on
 ---
 
 # infra scope

@@ -7,6 +7,7 @@ keywords:
   - poc
   - spike
 description: Prove feasibility fast
+skeleton: on
 ---
 
 # poc scope

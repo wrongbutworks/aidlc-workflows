@@ -193,27 +193,23 @@ Then present the structured approval question as defined above.
 ### Part 4: Progress update (mandatory — after user approves)
 After the user selects "Approve", display a progress line before proceeding.
 
-**For enterprise and feature scopes** (all 32 stages active):
+**When every compiled stage is in scope**:
 ```
 Progress: [N]/32 overall | [phase-N]/[phase-total] [Phase] stages complete. Next: [Next Stage Name]
 ```
 
-**For all other scopes** (fewer stages in scope), show in-scope progress with overall shown parenthetically:
+**When the active scope executes fewer stages than the compiled total**, show
+in-scope progress with overall shown parenthetically:
 ```
 Progress: [X]/[S] in-scope stages complete ([N]/32 overall) | [phase-N]/[phase-total] [Phase]. Next: [Next Stage Name]
 ```
-Where `S` = total stages for the current scope. Reference scope stage counts:
-| Scope | In-scope stages (S) |
-|-------|---------------------|
-| mvp | ~18 |
-| poc | ~8 |
-| bugfix | ~8 |
-| refactor | ~9 |
-| infra | ~13 |
-| security-patch | ~10 |
+Where `S` = total `EXECUTE` stages for the current scope, derived from the
+compiled scope grid. Use `bun .kiro/tools/aidlc-utility.ts
+scope-table` when you need the current totals; never carry a hand-maintained
+per-scope count table in this protocol.
 
-Example (enterprise): "Progress: 13/32 overall | 3/7 IDEATION stages complete. Next: Approval & Handoff"
-Example (bugfix): "Progress: 5/8 in-scope stages complete (7/32 overall) | 2/3 CONSTRUCTION. Next: Build & Test"
+Example (full-scope): "Progress: 13/32 overall | 3/7 IDEATION stages complete. Next: Approval & Handoff"
+Example (reduced-scope): "Progress: 5/8 in-scope stages complete (7/32 overall) | 2/3 CONSTRUCTION. Next: Build & Test"
 
 Count only stages in the current phase (INITIALIZATION, IDEATION, INCEPTION, CONSTRUCTION, or OPERATION). Include both completed and skipped stages in the numerator.
 
@@ -626,16 +622,10 @@ aidlc-product-agent, aidlc-design-agent, aidlc-delivery-agent, aidlc-architect-a
 Create exactly the detail needed — no more, no less. Depth adapts to scope and problem complexity:
 
 ### Scope-to-depth mapping
-| Scope | Default Depth | Typical Stages |
-|-------|--------------|----------------|
-| enterprise | Comprehensive | All 32 |
-| feature | Standard | All 32 |
-| mvp | Standard | ~25 (skip late Operation) |
-| poc | Minimal | ~8 (Ideation + core Inception) |
-| bugfix | Minimal | ~8 (targeted) |
-| refactor | Minimal | ~9 (targeted) |
-| infra | Standard | ~13 (infra-focused) |
-| security-patch | Minimal | ~10 (security-focused) |
+The active scope file declares the default `depth`, and the compiled scope grid
+declares which stages execute. Use `bun .kiro/tools/aidlc-utility.ts
+scope-table` for the current scope/depth/count table instead of copying counts
+into this protocol.
 
 ### Depth levels
 - **Minimal** (poc, bugfix, refactor, security-patch): ~2-4 questions per stage, minimal artifacts, brief analysis

@@ -4581,8 +4581,11 @@ function handleDetectScope(
 //     non-env path (CLI flag, keyword detection, or hard-coded fallback).
 //   - Env set to a valid scope: exit 0, print `scope=<value>` to stdout.
 //     The orchestrator synthesizes `--scope <value>` into $ARGUMENTS.
-//   - Env set to an invalid value: exit 1, print the canonical error message
-//     to stderr. The orchestrator stops without mutating state.
+//   - Env names a disabled/unknown scope while core is disabled and exactly one
+//     plugin scope owner is enabled: exit 0, print that plugin owner's
+//     selection-aware default scope.
+//   - Otherwise, env set to an invalid value: exit 1, print the canonical error
+//     message to stderr. The orchestrator stops without mutating state.
 //
 // Centralising validation here (instead of leaving it to LLM prose) guarantees
 // the error message shape and guarantees invalid env never reaches scope-change
@@ -4595,6 +4598,11 @@ function handleResolveEnvScope(): void {
     return; // unset — no output, exit 0
   }
   if (!validScopes().has(envScope)) {
+    const fallback = selectionAwareDefaultScope(envScope);
+    if (!fallback.error && validScopes().has(fallback.scope)) {
+      process.stdout.write(`scope=${fallback.scope}\n`);
+      return;
+    }
     die(
       `Invalid AWS_AIDLC_DEFAULT_SCOPE "${envScope}". Valid scopes: ${[...validScopes()].join(", ")}.`
     );

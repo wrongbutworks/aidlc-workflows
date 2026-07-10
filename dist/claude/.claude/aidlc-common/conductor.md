@@ -111,9 +111,9 @@ fed back to the engine — the engine still owns the transition:
    - prose says **"always"** / **"every greenfield feature"** → `on`
    - prose says **"never"** / "we don't run a skeleton ceremony" → `off`
    - prose says **"scope-dependent"** / is unspecified / the team layer is
-     empty → `scope-dependent` (the engine then falls back to the
-     scope-mapping defaults: skeleton-on for `enterprise`/`mvp`/`feature`/
-     `poc`/`workshop`, off for `bugfix`/`refactor`/`security-patch`).
+     empty → `scope-dependent` (the engine then falls back to the active
+     scope file's `skeleton:` field: `on` runs the skeleton ceremony, `off`
+     runs the first Bolt as a regular Bolt).
 3. Hand the stance back: `report --skeleton-stance <on|off|scope-dependent>`.
    The engine records it; the next `next` re-emits the same stage with the now
    determined boolean gate.

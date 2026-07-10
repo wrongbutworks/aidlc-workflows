@@ -7,6 +7,7 @@ keywords:
   - lab
   - training
 description: Facilitated group session with mandatory gates
+skeleton: on
 ---
 
 # workshop scope
