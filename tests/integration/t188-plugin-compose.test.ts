@@ -610,25 +610,29 @@ describe("t188 plugin compose — emit + compose the contribution seam", () => {
     expect(existsSync(dropFile)).toBe(false);
   });
 
-  test("deprecated bundle alias still composes", () => {
+  // The pre-rename bundle: key is dead, not aliased: a contribution carrying
+  // it is skipped with a drop that names the fix, whether the key appears
+  // alone or beside the canonical plugin: key. A stale plugin tree fails
+  // visibly instead of composing under wrong or ambiguous ownership.
+  test("renamed bundle: key alone is skipped with the fix named", () => {
     const { drops, proj } = composeSynthetic("syn-alias", {
       "contributions/construction/build-and-test.md":
         `---\ntarget: build-and-test\nbundle: syn-alias\nadds:\n  produces:\n    - syn-alias-artifact\n---\n`,
     });
     const body = readFileSync(join(proj, ".claude", "aidlc-common", "stages", "construction", "build-and-test.md"), "utf-8");
-    expect(body).toContain("syn-alias-artifact");
-    expect(drops).not.toContain("syn-alias");
+    expect(body).not.toContain("syn-alias-artifact");
+    expect(drops).toContain("renamed bundle: key");
+    expect(drops).toContain("write plugin: instead");
   });
 
-  test("conflicting plugin and bundle alias is skipped with a drop log", () => {
+  test("renamed bundle: key beside plugin: is still skipped", () => {
     const { drops, proj } = composeSynthetic("syn-conflict", {
       "contributions/construction/build-and-test.md":
         `---\ntarget: build-and-test\nplugin: syn-conflict\nbundle: other-conflict\nadds:\n  produces:\n    - syn-conflict-artifact\n---\n`,
     });
     const body = readFileSync(join(proj, ".claude", "aidlc-common", "stages", "construction", "build-and-test.md"), "utf-8");
     expect(body).not.toContain("syn-conflict-artifact");
-    expect(drops).toContain("conflicting plugin");
-    expect(drops).toContain("bundle (deprecated alias)");
+    expect(drops).toContain("renamed bundle: key");
   });
 
   // --- Round-6: per-plugin drops isolation + nested fence + plugin colon ---

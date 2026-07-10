@@ -582,13 +582,14 @@ try {
       // contribution — log it (a present-but-unknown target is already logged
       // below; a missing one was a silent bare continue).
       if (!target) { recordDrop(`contribution "${file}" has no parseable frontmatter target: — skipped (check for a BOM, a leading blank line, or a missing target: key)`); continue; }
-      const pluginField = fm.match(/^plugin:\s*(.+)$/m)?.[1].trim() ?? "";
-      const bundleAlias = fm.match(/^bundle:\s*(.+)$/m)?.[1].trim() ?? "";
-      if (pluginField && bundleAlias && pluginField !== bundleAlias) {
-        recordDrop(`contribution "${file}" has conflicting plugin "${pluginField}" and bundle (deprecated alias) "${bundleAlias}"; skipped`);
+      const plugin = fm.match(/^plugin:\s*(.+)$/m)?.[1].trim() ?? "";
+      // `bundle:` was the pre-rename ownership key. It is dead, not aliased —
+      // drop-log with the fix named so a stale plugin tree fails visibly
+      // instead of composing under wrong or ambiguous ownership.
+      if (/^bundle:\s*\S/m.test(fm)) {
+        recordDrop(`contribution "${file}" uses the renamed bundle: key; write plugin: instead — skipped`);
         continue;
       }
-      const plugin = pluginField || bundleAlias;
       // `:` is the fragment-sentinel delimiter (<!-- plugin:<plugin>:anchor:order -->),
       // so a plugin containing `:` would break the peer-block scan's `[^:]+` and
       // silently misorder splices. Reject it up front (round-6).

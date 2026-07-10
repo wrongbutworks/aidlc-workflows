@@ -823,13 +823,16 @@ describe("plugin metadata parse/emit", () => {
     expect(reparsed.plugin).toBe("test-pro");
   });
 
-  test("legacy bundle alias parses as plugin and emits plugin only", () => {
+  test("renamed bundle: key fails schema validation with the fix named", () => {
+    // The parser is a dumb extractor (it captures whatever scalar keys are
+    // present); the schema is the boundary that rejects the pre-rename key.
     const obj = parseStageFrontmatter(LEGACY_BUNDLE_METADATA) as Record<string, unknown>;
-    expect(obj.plugin).toBe("test-pro");
+    expect(obj.plugin).toBeUndefined();
     expect(obj.bundle).toBe("test-pro");
-    const yaml = emitStageFrontmatter(obj);
-    expect(yaml).toContain("plugin: test-pro\n");
-    expect(yaml).not.toContain("bundle:");
+    const r = validateStageFrontmatter(obj);
+    expect(r.valid).toBe(false);
+    if (r.valid) return;
+    expect(r.errors).toContain("bundle: was renamed; write plugin: for ownership");
   });
 });
 

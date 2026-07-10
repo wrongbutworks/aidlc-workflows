@@ -149,7 +149,7 @@ const REQUIRED_FIELDS = [
   "outputs",
 ] as const;
 
-const OPTIONAL_FIELDS = ["number", "name", "plugin", "bundle", "for_each", "workspace_requires", "optional_produces", "produces_kinds", "sensors", "scopes", "reviewer", "reviewer_max_iterations", "when", "required_sections"] as const;
+const OPTIONAL_FIELDS = ["number", "name", "plugin", "for_each", "workspace_requires", "optional_produces", "produces_kinds", "sensors", "scopes", "reviewer", "reviewer_max_iterations", "when", "required_sections"] as const;
 
 const KNOWN_FIELDS = new Set<string>([...REQUIRED_FIELDS, ...OPTIONAL_FIELDS]);
 
@@ -197,27 +197,20 @@ export function validateStageFrontmatter(
   }
 
   // Rule 3: unknown keys (not in REQUIRED_FIELDS ∪ OPTIONAL_FIELDS and not reserved).
+  // `bundle` gets a targeted error: it was the pre-rename ownership key, and the
+  // word stays deliberately unused (reserved for a possible future
+  // collection-of-plugins concept) — so name the fix instead of "unknown key".
   for (const key of Object.keys(raw)) {
+    if (key === "bundle") {
+      errors.push('bundle: was renamed; write plugin: for ownership');
+      continue;
+    }
     if (!KNOWN_FIELDS.has(key) && !(key in RESERVED_KEYS)) {
       errors.push(`unknown key: ${key}`);
     }
   }
 
-  // Normalize deprecated `bundle:` to canonical `plugin:` for every downstream
-  // schema consumer. Keep both raw keys known so legacy plugin trees parse, but
-  // fail loud if an author supplies two different ownership identities.
-  if (
-    typeof raw.plugin === "string" &&
-    typeof raw.bundle === "string" &&
-    raw.plugin !== raw.bundle
-  ) {
-    errors.push("plugin and bundle (deprecated alias) disagree");
-  }
   const o: Record<string, unknown> = { ...raw };
-  if (o.plugin === undefined && o.bundle !== undefined) {
-    o.plugin = o.bundle;
-  }
-  delete o.bundle;
 
   // Rule 4: required fields present.
   for (const field of REQUIRED_FIELDS) {
