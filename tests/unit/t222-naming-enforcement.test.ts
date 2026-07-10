@@ -2,7 +2,7 @@
 
 import { afterEach, describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { __resetGraphCache, compileStageGraph } from "../../core/tools/aidlc-graph.ts";
@@ -14,7 +14,7 @@ import {
   loadAgents,
   loadScopeMetadata,
 } from "../../core/tools/aidlc-lib.ts";
-import { cleanupTestProject, createTestProject, REPO_ROOT } from "../harness/fixtures.ts";
+import { cleanupTestProject, createTestProject, REPO_ROOT, setupIntegrationProject } from "../harness/fixtures.ts";
 
 const BUN = process.execPath;
 const UTIL = join(REPO_ROOT, "core", "tools", "aidlc-utility.ts");
@@ -232,5 +232,33 @@ describe("t222 naming enforcement", () => {
     expect(out).toContain('stem "wrong-scope"');
     expect(out).toContain('declares name "right-scope"');
     expect(out).toContain("Rename the file or fix the name.");
+  }, 30000);
+
+  test("doctor fails active selection coverage when stage frontmatter cannot be parsed", () => {
+    const project = setupIntegrationProject();
+    projects.push(project);
+
+    const harnessJsonPath = join(project, ".claude", "tools", "data", "harness.json");
+    const harnessJson = JSON.parse(readFileSync(harnessJsonPath, "utf-8")) as Record<string, unknown>;
+    harnessJson.plugins = ["aidlc"];
+    writeFileSync(harnessJsonPath, `${JSON.stringify(harnessJson, null, 2)}\n`, "utf-8");
+
+    const brokenPath = join(project, ".claude", "aidlc-common", "stages", "construction", "bad-frontmatter.md");
+    writeFileSync(brokenPath, "not frontmatter\n", "utf-8");
+
+    const res = spawnSync(BUN, [join(project, ".claude", "tools", "aidlc-utility.ts"), "doctor"], {
+      cwd: project,
+      encoding: "utf-8",
+      env: {
+        ...process.env,
+        AIDLC_HARNESS_DIR: ".claude",
+      },
+    });
+
+    expect(res.status).not.toBe(0);
+    expect(res.stdout).toContain("Enabled stage compile coverage: 1 enabled stage file(s) missing from the full graph");
+    expect(res.stdout).toContain("bad-frontmatter");
+    expect(res.stdout).toContain(brokenPath);
+    expect(res.stdout).toContain("frontmatter parse failed");
   }, 30000);
 });

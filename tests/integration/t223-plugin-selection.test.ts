@@ -1,9 +1,5 @@
-// t223-plugin-selection: install-time plugin selection.
-//
-// covers: core/tools/aidlc-lib.ts pluginsEnabled/loadStageGraphAll,
-// core/tools/aidlc-graph.ts enabled flags + closure guard,
-// core/tools/aidlc-utility.ts select-plugins, core/tools/aidlc-runner-gen.ts
-// pruning, and the generated SKILL.md table regions.
+// covers: subcommand:aidlc-utility:select-plugins, function:pluginsEnabled,
+// function:compileStageGraph, function:mergeComposedScopes
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
@@ -176,6 +172,24 @@ describe("t223 plugin selection — install chooses visible plugin surfaces", ()
     expect(result.stderr).toContain("Unknown plugin name");
     expect(result.stderr).toContain("aidlc");
     expect(result.stderr).toContain("test-pro");
+  });
+
+  test("select-plugins skips runner regeneration when the harness skills dir is absent", () => {
+    const noSkillsProj = join(tmp, "no-skills");
+    copyClaudeInstall(noSkillsProj);
+    composeTestPro(noSkillsProj, pluginBuilt);
+
+    const agentsSkill = join(noSkillsProj, ".agents", "skills", "aidlc", "SKILL.md");
+    mkdirSync(dirname(agentsSkill), { recursive: true });
+    cpSync(join(noSkillsProj, ".claude", "skills", "aidlc", "SKILL.md"), agentsSkill);
+    rmSync(join(noSkillsProj, ".claude", "skills"), { recursive: true, force: true });
+
+    const result = runUtility(noSkillsProj, ["select-plugins", "test-pro"]);
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain("note: runner regeneration skipped:");
+    expect(result.stdout).toContain(join(noSkillsProj, ".claude", "skills"));
+    expect(result.stdout).toContain("Enabled plugins: test-pro");
+    expect(existsSync(join(noSkillsProj, ".claude", "skills"))).toBe(false);
   });
 
   test("late-step failure rolls back harness, graph, and grid then regenerates restored selection", () => {

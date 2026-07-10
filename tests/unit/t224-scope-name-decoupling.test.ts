@@ -1,7 +1,4 @@
-// t224-scope-name-decoupling: keep scope behavior data-driven.
-//
-// covers: core/tools/aidlc-lib.ts loadScopeMetadata/selectionAwareDefaultScope,
-// core/tools/aidlc-orchestrate.ts env-scope fallback and skeleton stance source
+// covers: function:loadScopeMetadata, function:selectionAwareDefaultScope
 
 import { afterEach, describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
@@ -23,6 +20,7 @@ import {
   _resetScopeMappingForTests,
   _resetStageGraphForTests,
   loadScopeMetadata,
+  selectionAwareDefaultScope,
 } from "../../core/tools/aidlc-lib.ts";
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
@@ -60,6 +58,7 @@ afterEach(() => {
     if (existsSync(dir)) rmSync(dir, { recursive: true, force: true });
   }
   delete process.env.AIDLC_SCOPES_DIR;
+  delete process.env.AIDLC_SCOPE_MAPPING;
   _resetScopeMappingForTests();
   _resetStageGraphForTests();
   _resetHarnessDataForTests();
@@ -280,6 +279,68 @@ describe("t224 skeleton scope metadata", () => {
 });
 
 describe("t224 env-scope fallback under plugin-only selection", () => {
+  test("selectionAwareDefaultScope notes sole-plugin substitution only when it substitutes", () => {
+    const dir = tempDir("aidlc-t224-scope-mapping-");
+    const mappingPath = join(dir, "scope-mapping.json");
+    writeFileSync(
+      mappingPath,
+      `${JSON.stringify(
+        {
+          "test-pro-validation": {
+            depth: "Minimal",
+            description: "Plugin fixture",
+            keywords: [],
+            plugin: "test-pro",
+            stages: {},
+          },
+        },
+        null,
+        2,
+      )}\n`,
+      "utf-8",
+    );
+
+    withEnv({ AIDLC_SCOPE_MAPPING: mappingPath }, () => {
+      const fallback = selectionAwareDefaultScope("feature");
+      expect(fallback.scope).toBe("test-pro-validation");
+      expect(fallback.error).toBeUndefined();
+      expect(fallback.note).toBe(
+        'scope "feature" is not an enabled scope; using "test-pro-validation" (sole enabled plugin\'s first scope)',
+      );
+    });
+
+    writeFileSync(
+      mappingPath,
+      `${JSON.stringify(
+        {
+          feature: {
+            depth: "Minimal",
+            description: "Core fixture",
+            keywords: [],
+            stages: {},
+          },
+          "test-pro-validation": {
+            depth: "Minimal",
+            description: "Plugin fixture",
+            keywords: [],
+            plugin: "test-pro",
+            stages: {},
+          },
+        },
+        null,
+        2,
+      )}\n`,
+      "utf-8",
+    );
+
+    withEnv({ AIDLC_SCOPE_MAPPING: mappingPath }, () => {
+      const preferred = selectionAwareDefaultScope("feature");
+      expect(preferred.scope).toBe("feature");
+      expect(preferred.error).toBeUndefined();
+      expect(preferred.note).toBeUndefined();
+    });
+  });
+
   test("AWS_AIDLC_DEFAULT_SCOPE naming disabled core falls back to the sole plugin scope", () => {
     const project = makePluginOnlyInstall();
     const tool = join(project, ".claude", "tools", "aidlc-orchestrate.ts");
@@ -309,5 +370,8 @@ describe("t224 env-scope fallback under plugin-only selection", () => {
     expect(out).not.toContain("Invalid AWS_AIDLC_DEFAULT_SCOPE");
     expect(out).toContain('"kind":"run-stage"');
     expect(out).toContain('"stage":"requirements-analysis"');
+    expect(result.stderr).toContain(
+      'AWS_AIDLC_DEFAULT_SCOPE="feature" is not an enabled scope; using test-pro-validation (sole enabled plugin\'s first scope)',
+    );
   });
 });

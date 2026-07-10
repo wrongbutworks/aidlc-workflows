@@ -375,8 +375,15 @@ function replaceGeneratedRegion(beginMarker: string, endMarker: string, region: 
 function regenerateSelectionSurfaces(projectDir: string): void {
   runBunTool(projectDir, "aidlc-graph.ts", ["compile"], "aidlc-graph compile");
   resetSelectionSensitiveCaches();
-  runBunTool(projectDir, "aidlc-runner-gen.ts", ["write"], "aidlc-runner-gen write");
-  runBunTool(projectDir, "aidlc-runner-gen.ts", ["scopes"], "aidlc-runner-gen scopes");
+  const skillsDir = join(TOOLS_DIR, "..", "skills");
+  if (existsSync(skillsDir)) {
+    runBunTool(projectDir, "aidlc-runner-gen.ts", ["write"], "aidlc-runner-gen write");
+    runBunTool(projectDir, "aidlc-runner-gen.ts", ["scopes"], "aidlc-runner-gen scopes");
+  } else {
+    process.stdout.write(
+      `note: runner regeneration skipped: ${skillsDir} not present in this install\n`,
+    );
+  }
   resetSelectionSensitiveCaches();
   replaceGeneratedRegion(
     STAGE_TABLE_BEGIN,
@@ -941,8 +948,12 @@ function handleDoctor(projectDir: string): void {
           ) {
             missingEnabled.push(`${slug} (${path})`);
           }
-        } catch {
-          // Schema validation below owns malformed stage frontmatter.
+        } catch (e) {
+          if (selected !== null) {
+            missingEnabled.push(
+              `${f.replace(/\.md$/, "")} (${path}) - frontmatter parse failed: ${errorMessage(e)}`,
+            );
+          }
         }
       }
     }
@@ -950,7 +961,7 @@ function handleDoctor(projectDir: string): void {
     // torn select-plugins run (selection installs regenerate via select-plugins,
     // which compiles in-chain). Without a selection an uncompiled stage file is
     // deliberate authoring state - the pre-existing "Uncompiled stage files"
-    // advisory row below owns that case (issue #364's contract: advisory, exit 0).
+    // advisory row below owns that case as an exit-zero advisory.
     const torn = selected !== null && missingEnabled.length > 0;
     results.push({
       pass: !torn,
@@ -1842,9 +1853,9 @@ function handleDoctor(projectDir: string): void {
   //     path to a missing file) -> hard FAIL.
   //   - disk->graph (uncompiledStages): a <phase>/<slug>.md whose slug is absent
   //     from the compiled graph. The runtime resolves stages from the compiled
-  //     graph only, so the file is silently never executed (issue #364). The
-  //     file is inert, not corrupt, and recompiling is a deliberate authoring
-  //     act -> ADVISORY (pass:true; does not fail the doctor exit code, mirroring
+  //     graph only, so the file is silently never executed. The file is inert,
+  //     not corrupt, and recompiling is a deliberate authoring act -> ADVISORY
+  //     (pass:true; does not fail the doctor exit code, mirroring
   //     the rule-drift / MERGE_DISPATCH advisory rows).
   try {
     const { missingFiles, uncompiledStages, graphCount } = stageGraphDrift();
@@ -4608,6 +4619,11 @@ function handleResolveEnvScope(): void {
   if (!validScopes().has(envScope)) {
     const fallback = selectionAwareDefaultScope(envScope);
     if (!fallback.error && validScopes().has(fallback.scope)) {
+      if (fallback.note) {
+        process.stderr.write(
+          `AWS_AIDLC_DEFAULT_SCOPE="${envScope}" is not an enabled scope; using ${fallback.scope} (sole enabled plugin's first scope)\n`,
+        );
+      }
       process.stdout.write(`scope=${fallback.scope}\n`);
       return;
     }

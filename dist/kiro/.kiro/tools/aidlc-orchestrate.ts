@@ -556,6 +556,11 @@ function resolveScope(
   if (envScope.length > 0) {
     if (validScopes().has(envScope)) return { scope: envScope, source: "env" };
     const fallback = selectionAwareDefaultScope(envScope);
+    if (!fallback.error && fallback.note) {
+      process.stderr.write(
+        `AWS_AIDLC_DEFAULT_SCOPE="${envScope}" is not an enabled scope; using ${fallback.scope} (sole enabled plugin's first scope)\n`,
+      );
+    }
     return { scope: fallback.scope, source: "env", error: fallback.error };
   }
   const fallback = selectionAwareDefaultScope(DEFAULT_SCOPE);

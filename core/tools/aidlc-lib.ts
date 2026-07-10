@@ -3253,6 +3253,7 @@ export function validScopes(): ReadonlySet<string> {
 export interface DefaultScopeResolution {
   scope: string;
   error?: string;
+  note?: string;
 }
 
 export function selectionAwareDefaultScope(preferred = "feature"): DefaultScopeResolution {
@@ -3273,7 +3274,12 @@ export function selectionAwareDefaultScope(preferred = "feature"): DefaultScopeR
 
   if (coreScopes.length === 0 && pluginOwners.length === 1) {
     const only = [...(scopesByPlugin.get(pluginOwners[0]) ?? [])].sort();
-    if (only.length > 0) return { scope: only[0] };
+    if (only.length > 0) {
+      return {
+        scope: only[0],
+        note: `scope "${preferred}" is not an enabled scope; using "${only[0]}" (sole enabled plugin's first scope)`,
+      };
+    }
   }
 
   return {
