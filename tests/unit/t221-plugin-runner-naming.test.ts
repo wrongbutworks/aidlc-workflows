@@ -14,17 +14,11 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import {
-  __resetGraphCache,
-  compileStageGraph,
-} from "../../core/tools/aidlc-graph.ts";
-import {
-  _resetScopeMappingForTests,
-  _resetStageGraphForTests,
-} from "../../core/tools/aidlc-lib.ts";
+import { compileStageGraph } from "../../core/tools/aidlc-graph.ts";
 import {
   REPO_ROOT,
   setupIntegrationProject,
+  withEnvAndFreshCaches,
 } from "../harness/fixtures.ts";
 
 const BUN = process.execPath;
@@ -42,28 +36,6 @@ function tempDir(prefix: string): string {
   const d = mkdtempSync(join(tmpdir(), prefix));
   tempDirs.push(d);
   return d;
-}
-
-function resetGraphCaches(): void {
-  __resetGraphCache();
-  _resetStageGraphForTests();
-  _resetScopeMappingForTests();
-}
-
-function withEnv<T>(env: Record<string, string>, fn: () => T): T {
-  const prior = new Map<string, string | undefined>();
-  for (const key of Object.keys(env)) prior.set(key, process.env[key]);
-  Object.assign(process.env, env);
-  resetGraphCaches();
-  try {
-    return fn();
-  } finally {
-    for (const [key, value] of prior) {
-      if (value === undefined) delete process.env[key];
-      else process.env[key] = value;
-    }
-    resetGraphCaches();
-  }
 }
 
 function stageFrontmatter(slug: string, extra = ""): string {
@@ -106,7 +78,7 @@ function compileFixture(stages: Record<string, string>) {
   writeFileSync(graphPath, "[]\n", "utf-8");
   writeFileSync(gridPath, "{}\n", "utf-8");
 
-  return withEnv(
+  return withEnvAndFreshCaches(
     {
       AIDLC_STAGES_DIR: stagesDir,
       AIDLC_STAGE_GRAPH: graphPath,

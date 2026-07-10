@@ -134,7 +134,7 @@ The composer proposes; the human decides; the deterministic validator guards. Yo
 
 The engine resolves scope-level stage routing internally (it reads the compiled scope grid the table below summarises). The summary table is kept here as human-readable data — not dispatch logic — and is regenerated, never hand-edited. (One carve-out: the dispatched composer agent APPENDS approved composed scopes to the runtime scope registry (`.kiro/scopes/aidlc-<name>.md` + a `scope-grid.json` entry) - that is the sanctioned write path for composed scopes, not a hand-edit; this summary table itself stays generated.) Source of truth: one file per scope under `.kiro/scopes/aidlc-<name>.md` plus each stage's `scopes:` frontmatter, transposed at `bun .kiro/tools/aidlc-graph.ts compile`; regenerate this table with `bun .kiro/tools/aidlc-utility.ts scope-table`.
 
-<!-- BEGIN: compiled scope grid via `bun aidlc-utility.ts scope-table` — do NOT hand-edit -->
+<!-- BEGIN: compiled scope grid via `bun aidlc-utility.ts scope-table` - do NOT hand-edit -->
 
 | Scope          | Depth         | TestStrategy | EXECUTE / Total |
 |----------------|---------------|--------------|-----------------|

@@ -281,6 +281,11 @@ export function isPluginEnabled(plugin: string): boolean {
   return selected === null || selected.has(plugin);
 }
 
+export function stageEnabledBySelection(stage: { plugin?: string; phase?: string }): boolean {
+  if (stage.phase === "initialization") return true;
+  return isPluginEnabled(stage.plugin ?? "aidlc");
+}
+
 export function _resetHarnessDataForTests(): void {
   _shippedHarnessData = null;
 }
@@ -3103,9 +3108,8 @@ export function loadScopeMetadataAll(): Record<string, ScopeMetadata> {
   for (const f of files) {
     const filePath = join(dir, f);
     const body = readFileSync(filePath, "utf-8");
-    const m = body.match(/^---\r?\n([\s\S]*?)\r?\n---/);
-    if (!m) throw new Error(`Scope file missing frontmatter: ${filePath}`);
-    const fm = m[1];
+    const fm = frontmatterBlock(body);
+    if (fm === null) throw new Error(`Scope file missing frontmatter: ${filePath}`);
     const name = scalarField(fm, "name");
     if (!name) throw new Error(`Scope file ${filePath} missing required frontmatter: name`);
     const previousFile = nameToFile.get(name);
@@ -3343,9 +3347,8 @@ export function _resetAgentsForTests(): void {
 
 function parseAgentFrontmatter(path: string): AgentMetadata {
   const body = readFileSync(path, "utf-8");
-  const m = body.match(/^---\r?\n([\s\S]*?)\r?\n---/);
-  if (!m) throw new Error(`Agent file missing frontmatter: ${path}`);
-  const fm = m[1];
+  const fm = frontmatterBlock(body);
+  if (fm === null) throw new Error(`Agent file missing frontmatter: ${path}`);
 
   const slug = scalarField(fm, "name");
   const display_name = scalarField(fm, "display_name");
@@ -3360,6 +3363,11 @@ function parseAgentFrontmatter(path: string): AgentMetadata {
     );
   }
   return { slug, display_name, examples };
+}
+
+export function frontmatterBlock(body: string): string | null {
+  const m = body.match(/^---\r?\n([\s\S]*?)\r?\n---/);
+  return m?.[1] ?? null;
 }
 
 // Scalar field parser. Rejects YAML folded/literal block markers

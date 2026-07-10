@@ -5,16 +5,19 @@ import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { __resetGraphCache, compileStageGraph } from "../../core/tools/aidlc-graph.ts";
+import { compileStageGraph } from "../../core/tools/aidlc-graph.ts";
 import {
-  _resetAgentsForTests,
-  _resetScopeMappingForTests,
-  _resetStageGraphForTests,
   agentsDir,
   loadAgents,
   loadScopeMetadata,
 } from "../../core/tools/aidlc-lib.ts";
-import { cleanupTestProject, createTestProject, REPO_ROOT, setupIntegrationProject } from "../harness/fixtures.ts";
+import {
+  cleanupTestProject,
+  createTestProject,
+  REPO_ROOT,
+  setupIntegrationProject,
+  withEnvAndFreshCaches,
+} from "../harness/fixtures.ts";
 
 const BUN = process.execPath;
 const UTIL = join(REPO_ROOT, "core", "tools", "aidlc-utility.ts");
@@ -36,39 +39,13 @@ afterEach(() => {
   delete process.env.AIDLC_SCOPES_DIR;
   delete process.env.AIDLC_AGENTS_DIR;
   delete process.env.AIDLC_HARNESS_DIR;
-  resetCaches();
+  withEnvAndFreshCaches({}, () => undefined);
 });
 
 function tempDir(prefix: string): string {
   const d = mkdtempSync(join(tmpdir(), prefix));
   tempDirs.push(d);
   return d;
-}
-
-function resetCaches(): void {
-  __resetGraphCache();
-  _resetStageGraphForTests();
-  _resetScopeMappingForTests();
-  _resetAgentsForTests();
-}
-
-function withEnv<T>(env: Record<string, string | undefined>, fn: () => T): T {
-  const prior = new Map<string, string | undefined>();
-  for (const key of Object.keys(env)) prior.set(key, process.env[key]);
-  for (const [key, value] of Object.entries(env)) {
-    if (value === undefined) delete process.env[key];
-    else process.env[key] = value;
-  }
-  resetCaches();
-  try {
-    return fn();
-  } finally {
-    for (const [key, value] of prior) {
-      if (value === undefined) delete process.env[key];
-      else process.env[key] = value;
-    }
-    resetCaches();
-  }
 }
 
 function stageFrontmatter(slug: string): string {
@@ -108,7 +85,7 @@ function compileStageFixture(filenameStem: string, slug: string): void {
   writeFileSync(graphPath, "[]\n", "utf-8");
   writeFileSync(gridPath, "{}\n", "utf-8");
 
-  withEnv(
+  withEnvAndFreshCaches(
     {
       AIDLC_STAGES_DIR: stagesDir,
       AIDLC_STAGE_GRAPH: graphPath,
@@ -172,7 +149,7 @@ describe("t222 naming enforcement", () => {
     writeScope(dir, "beta.md", "shared-scope");
 
     expect(() =>
-      withEnv({ AIDLC_SCOPES_DIR: dir }, () => loadScopeMetadata()),
+      withEnvAndFreshCaches({ AIDLC_SCOPES_DIR: dir }, () => loadScopeMetadata()),
     ).toThrow(
       new RegExp(
         `Duplicate scope name "shared-scope".*${second.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}.*${first.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}.*Rename one of them`,
@@ -188,7 +165,7 @@ describe("t222 naming enforcement", () => {
     writeAgent(dir, "beta-agent.md", "shared-agent");
 
     expect(() =>
-      withEnv({ AIDLC_AGENTS_DIR: dir }, () => loadAgents()),
+      withEnvAndFreshCaches({ AIDLC_AGENTS_DIR: dir }, () => loadAgents()),
     ).toThrow(
       new RegExp(
         `Duplicate agent slug "shared-agent".*${second.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}.*${first.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}.*Rename one of them`,
@@ -200,7 +177,7 @@ describe("t222 naming enforcement", () => {
     const dir = tempDir("aidlc-t222-agent-seam-");
     writeAgent(dir, "fixture-agent.md", "fixture-agent");
 
-    withEnv({ AIDLC_AGENTS_DIR: dir }, () => {
+    withEnvAndFreshCaches({ AIDLC_AGENTS_DIR: dir }, () => {
       expect(agentsDir()).toBe(dir);
       expect(loadAgents()).toEqual([
         { slug: "fixture-agent", display_name: "fixture-agent", examples: [] },

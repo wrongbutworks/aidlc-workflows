@@ -37,6 +37,13 @@ import {
 import { hostname, tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { __resetGraphCache } from "../../core/tools/aidlc-graph.ts";
+import {
+  _resetAgentsForTests,
+  _resetHarnessDataForTests,
+  _resetScopeMappingForTests,
+  _resetStageGraphForTests,
+} from "../../core/tools/aidlc-lib.ts";
 import { seedCustomHarness } from "./custom-harness.ts";
 
 const HARNESS_DIR = dirname(fileURLToPath(import.meta.url));
@@ -79,6 +86,36 @@ export const AIDLC_MEMORY_SRC = join(REPO_ROOT, "dist", "claude", "aidlc");
 export const FIXTURES_DIR = join(REPO_ROOT, "tests", "fixtures");
 
 const RETRYABLE_RM_CODES = new Set(["EBUSY", "ENOTEMPTY", "EPERM"]);
+
+function resetSelectionSensitiveCaches(): void {
+  __resetGraphCache();
+  _resetStageGraphForTests();
+  _resetScopeMappingForTests();
+  _resetAgentsForTests();
+  _resetHarnessDataForTests();
+}
+
+export function withEnvAndFreshCaches<T>(
+  env: Record<string, string | undefined>,
+  fn: () => T,
+): T {
+  const prior = new Map<string, string | undefined>();
+  for (const key of Object.keys(env)) prior.set(key, process.env[key]);
+  for (const [key, value] of Object.entries(env)) {
+    if (value === undefined) delete process.env[key];
+    else process.env[key] = value;
+  }
+  resetSelectionSensitiveCaches();
+  try {
+    return fn();
+  } finally {
+    for (const [key, value] of prior) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+    resetSelectionSensitiveCaches();
+  }
+}
 
 /**
  * Unset AIDLC-related env vars that a developer's shell (or a prior test) may

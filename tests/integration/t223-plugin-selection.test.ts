@@ -1,4 +1,4 @@
-// covers: subcommand:aidlc-utility:select-plugins, function:pluginsEnabled,
+// covers: subcommand:aidlc-utility:select-plugins, audit:PLUGIN_SELECTION_CHANGED, function:pluginsEnabled,
 // function:compileStageGraph, function:mergeComposedScopes
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
@@ -6,15 +6,13 @@ import { spawnSync } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { readAllAuditShards } from "../../dist/claude/.claude/tools/aidlc-lib.ts";
+import { AIDLC_MEMORY_SRC, AIDLC_SRC, REPO_ROOT } from "../harness/fixtures.ts";
 
-const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const PACKAGE_TS = join(REPO_ROOT, "scripts", "package.ts");
 const BUN = process.execPath;
 const TIMEOUT_MS = 60_000;
 const PLUGIN = "test-pro";
-const CLAUDE_DIST_ROOT = join(REPO_ROOT, "dist", "claude");
-const CLAUDE_DIST = join(REPO_ROOT, "dist", "claude", ".claude");
 const STAGE_TABLE_BEGIN =
   "<!-- BEGIN: compiled stage graph via `bun aidlc-utility.ts stage-table` - do NOT hand-edit -->";
 const STAGE_TABLE_END = "<!-- END: compiled stage graph -->";
@@ -82,8 +80,35 @@ function composeTestPro(project: string, pluginBuilt: string): void {
 }
 
 function copyClaudeInstall(project: string): void {
-  cpSync(CLAUDE_DIST, join(project, ".claude"), { recursive: true });
-  cpSync(join(CLAUDE_DIST_ROOT, "aidlc"), join(project, "aidlc"), { recursive: true });
+  mkdirSync(project, { recursive: true });
+  cpSync(AIDLC_SRC, join(project, ".claude"), { recursive: true });
+  if (existsSync(AIDLC_MEMORY_SRC)) {
+    cpSync(AIDLC_MEMORY_SRC, join(project, "aidlc"), { recursive: true });
+  }
+}
+
+function auditField(body: string, ev: string, key: string): string {
+  let matched = false;
+  for (const line of body.split("\n")) {
+    if (line.startsWith("## ") || line === "---") {
+      matched = false;
+      continue;
+    }
+    if (line.startsWith("**Event**: ")) {
+      matched = line === `**Event**: ${ev}`;
+      continue;
+    }
+    if (matched && line.startsWith("**")) {
+      const stripped = line.replace(/^\*\*/, "");
+      const pos = stripped.indexOf("**: ");
+      if (pos > 0) {
+        const label = stripped.slice(0, pos);
+        const value = stripped.slice(pos + 4);
+        if (label === key) return value;
+      }
+    }
+  }
+  return "";
 }
 
 function writeSortedGrid(project: string, scopeGrid: Record<string, { stages: Record<string, string> }>): void {
@@ -121,6 +146,9 @@ describe("t223 plugin selection — install chooses visible plugin surfaces", ()
 
     const selected = runUtility(project, ["select-plugins", "test-pro"]);
     expect(selected.status).toBe(0);
+    const audit = readAllAuditShards(project);
+    expect(auditField(audit, "PLUGIN_SELECTION_CHANGED", "Previous Selection")).toBe("all enabled (no selection)");
+    expect(auditField(audit, "PLUGIN_SELECTION_CHANGED", "New Selection")).toBe("test-pro");
 
     const harness = JSON.parse(readFileSync(harnessPath(project), "utf-8"));
     expect(harness.plugins).toEqual(["test-pro"]);

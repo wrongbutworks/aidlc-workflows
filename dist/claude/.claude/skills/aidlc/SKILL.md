@@ -134,7 +134,7 @@ The orchestration engine resolves scope-level stage routing internally (it reads
 
 Source of truth: one file per scope under `.claude/scopes/aidlc-<name>.md` (identity + keywords + description + skeleton default) plus each stage's `scopes:` frontmatter (membership), transposed into the compiled grid at `bun .claude/tools/aidlc-graph.ts compile`. Adding a scope is the same muscle memory as authoring a sensor or agent — drop `.claude/scopes/aidlc-<name>.md`, tag the member stages' `scopes:` lists, recompile, then `bun .claude/tools/aidlc-utility.ts scope-table` to regenerate the table below + commit. No prose edit required. CI runs `scope-table --check` to prevent drift.
 
-<!-- BEGIN: compiled scope grid via `bun aidlc-utility.ts scope-table` — do NOT hand-edit -->
+<!-- BEGIN: compiled scope grid via `bun aidlc-utility.ts scope-table` - do NOT hand-edit -->
 
 | Scope          | Depth         | TestStrategy | EXECUTE / Total |
 |----------------|---------------|--------------|-----------------|

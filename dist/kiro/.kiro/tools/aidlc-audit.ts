@@ -15,7 +15,7 @@ import {
   worktreePath,
 } from "./aidlc-lib.ts";
 
-// --- Canonical event types (70) ---
+// --- Canonical event types (71) ---
 // See docs/reference/12-state-machine.md for the state transitions that emit each event.
 
 const VALID_EVENT_TYPES = new Set([
@@ -64,6 +64,8 @@ const VALID_EVENT_TYPES = new Set([
   "HEALTH_CHECKED",
   "SCOPE_DETECTED",
   "SCOPE_CHANGED",
+  // User-driven plugin selection changes enabled graph/scope surfaces.
+  "PLUGIN_SELECTION_CHANGED",
   "DEPTH_CHANGED",
   "TEST_STRATEGY_CHANGED",
   // Adaptive composer: an in-flight plan re-shape (pending-stage suffix flips
@@ -158,6 +160,7 @@ const EVENT_HEADINGS: Record<string, string> = {
   HEALTH_CHECKED: "Health Check",
   SCOPE_DETECTED: "Scope Detection",
   SCOPE_CHANGED: "Scope Change",
+  PLUGIN_SELECTION_CHANGED: "Plugin Selection Change",
   DEPTH_CHANGED: "Depth Change",
   TEST_STRATEGY_CHANGED: "Test Strategy Change",
   RECOMPOSED: "Plan Recomposed",

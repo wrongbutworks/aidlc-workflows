@@ -13,12 +13,14 @@ import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { appendAuditEntry, appendAuditEntryUnlocked } from "./aidlc-audit.ts";
 import {
+  artifactsRegistryFor,
   findCycles,
   frameworkMemorySeedDir,
   loadGraph,
   loadRules,
   memoryDirFor,
   stageGraphDrift,
+  type GraphStage,
   validateGrid,
   validateScope,
 } from "./aidlc-graph.ts";
@@ -41,6 +43,7 @@ import {
   escapeRegex,
   findAllEvents,
   findStageBySlug,
+  frontmatterBlock,
   getField,
   holdsAuditLock,
   hooksHealthDir,
@@ -87,6 +90,7 @@ import {
   pluginsEnabled,
   selectionAwareDefaultScope,
   scalarField,
+  stageEnabledBySelection,
   stagesInScope,
   stateFilePath,
   withAuditLock,
@@ -312,9 +316,7 @@ function countOwner(stage: Pick<StageEntry, "plugin" | "phase">): string {
 }
 
 function expectedEnabledBySelection(stage: Pick<StageEntry, "plugin" | "phase">): boolean {
-  if (stage.phase === "initialization") return true;
-  const selected = pluginsEnabled();
-  return selected === null || selected.has(selectionOwner(stage));
+  return stageEnabledBySelection(stage);
 }
 
 function parsePluginSelectionArgs(positional: string[]): { names: string[]; hasEmpty: boolean } {
@@ -323,6 +325,10 @@ function parsePluginSelectionArgs(positional: string[]): { names: string[]; hasE
     names: parts.filter((s) => s.length > 0),
     hasEmpty: parts.some((s) => s.length === 0),
   };
+}
+
+function renderPluginSelection(selected: ReadonlySet<string> | null): string {
+  return selected === null ? "all enabled (no selection)" : [...selected].sort().join(", ");
 }
 
 function readHarnessDataObject(): Record<string, unknown> {
@@ -360,15 +366,51 @@ function runBunTool(projectDir: string, rel: string, args: string[], label: stri
   }
 }
 
-function replaceGeneratedRegion(beginMarker: string, endMarker: string, region: string): void {
+interface GeneratedRegionLocation {
+  beginIdx: number;
+  endIdx: number;
+  regionEndIdx: number;
+}
+
+function findGeneratedRegion(
+  body: string,
+  beginMarker: string,
+  endMarker: string,
+  verb: string,
+  skillPath: string,
+): GeneratedRegionLocation {
+  const beginIdx = body.indexOf(beginMarker);
+  const lastBeginIdx = body.lastIndexOf(beginMarker);
+  const endIdx = body.indexOf(endMarker);
+  const lastEndIdx = body.lastIndexOf(endMarker);
+  if (beginIdx === -1 || endIdx === -1) {
+    throw new Error(
+      `SKILL.md at ${skillPath} is missing ${verb} markers. Expected:\n  ${beginMarker}\n  ${endMarker}`,
+    );
+  }
+  if (beginIdx !== lastBeginIdx || endIdx !== lastEndIdx) {
+    throw new Error(
+      `SKILL.md at ${skillPath} has duplicate ${verb} markers. Expected exactly one BEGIN and one END.`,
+    );
+  }
+  if (endIdx < beginIdx) {
+    throw new Error(
+      `SKILL.md at ${skillPath} has ${verb} markers out of order (END before BEGIN).`,
+    );
+  }
+  return { beginIdx, endIdx, regionEndIdx: endIdx + endMarker.length };
+}
+
+function replaceGeneratedRegion(
+  verb: string,
+  beginMarker: string,
+  endMarker: string,
+  region: string,
+): void {
   const path = skillMdPath();
   const before = readFileSync(path, "utf-8").replace(/\r\n/g, "\n");
-  const begin = before.indexOf(beginMarker);
-  const end = before.indexOf(endMarker, begin);
-  if (begin === -1 || end === -1) {
-    throw new Error(`SKILL.md at ${path} is missing generated-region markers.`);
-  }
-  const after = before.slice(0, begin) + region + before.slice(end + endMarker.length);
+  const located = findGeneratedRegion(before, beginMarker, endMarker, verb, path);
+  const after = before.slice(0, located.beginIdx) + region + before.slice(located.regionEndIdx);
   if (after !== before) writeFileSync(path, after, "utf-8");
 }
 
@@ -386,11 +428,13 @@ function regenerateSelectionSurfaces(projectDir: string): void {
   }
   resetSelectionSensitiveCaches();
   replaceGeneratedRegion(
+    "stage-table",
     STAGE_TABLE_BEGIN,
     STAGE_TABLE_END,
     canonicalStageTableRegion(renderStageTable()),
   );
   replaceGeneratedRegion(
+    "scope-table",
     SCOPE_TABLE_BEGIN,
     SCOPE_TABLE_END,
     canonicalScopeTableRegion(renderScopeTable()),
@@ -399,8 +443,7 @@ function regenerateSelectionSurfaces(projectDir: string): void {
 
 function handleSelectPlugins(projectDir: string, positional: string[]): void {
   if (positional.length === 1) {
-    const current = pluginsEnabled();
-    const selection = current === null ? "all enabled (no selection)" : [...current].sort().join(", ");
+    const selection = renderPluginSelection(pluginsEnabled());
     process.stdout.write(
       `Current plugin selection: ${selection}\nKnown plugins: ${knownPluginNames().join(", ")}\n`,
     );
@@ -418,6 +461,8 @@ function handleSelectPlugins(projectDir: string, positional: string[]): void {
     die(`Unknown plugin name(s): ${unknown.join(", ")}. Valid plugins: ${known.join(", ")}.`);
   }
   const names = [...new Set(parsedSelection.names)].sort();
+  const previousSelection = renderPluginSelection(pluginsEnabled());
+  const newSelection = names.join(", ");
 
   const snapshots = [
     snapshotFile(harnessDataPath()),
@@ -428,6 +473,10 @@ function handleSelectPlugins(projectDir: string, positional: string[]): void {
   try {
     writePluginSelection(names);
     regenerateSelectionSurfaces(projectDir);
+    appendAuditEvent(projectDir, "PLUGIN_SELECTION_CHANGED", {
+      "Previous Selection": previousSelection,
+      "New Selection": newSelection,
+    });
     process.stdout.write(`Enabled plugins: ${names.join(", ")}\n`);
   } catch (err) {
     const original = errorMessage(err);
@@ -612,11 +661,11 @@ interface NamingMismatch {
 
 function frontmatterFields(filePath: string, kind: "Agent" | "Scope"): { name: string; plugin: string } {
   const body = readFileSync(filePath, "utf-8");
-  const m = body.match(/^---\r?\n([\s\S]*?)\r?\n---/);
-  if (!m) throw new Error(`${kind} file missing frontmatter: ${filePath}`);
-  const name = scalarField(m[1], "name");
+  const fm = frontmatterBlock(body);
+  if (fm === null) throw new Error(`${kind} file missing frontmatter: ${filePath}`);
+  const name = scalarField(fm, "name");
   if (!name) throw new Error(`${kind} file ${filePath} missing required frontmatter: name`);
-  return { name, plugin: scalarField(m[1], "plugin") };
+  return { name, plugin: scalarField(fm, "plugin") };
 }
 
 function scopeFilenameMatchesDeclaredName(stem: string, name: string, plugin: string): boolean {
@@ -1972,11 +2021,7 @@ function handleDoctor(projectDir: string): void {
   try {
     const graph = loadStageGraphAll();
     const allSlugs = new Set(graph.map((s) => s.slug));
-    const allArtifacts = new Set<string>();
-    for (const stage of graph) {
-      for (const artifact of stage.produces ?? []) allArtifacts.add(artifact);
-      for (const artifact of stage.optional_produces ?? []) allArtifacts.add(artifact);
-    }
+    const allArtifacts = artifactsRegistryFor(graph as unknown as readonly GraphStage[]);
     const refFails: string[] = [];
     for (const stage of graph) {
       for (const c of stage.consumes ?? []) {
@@ -4265,7 +4310,7 @@ export function findScopeByKeyword(kw: string): string[] {
 }
 
 // ---------------------------------------------------------------------------
-// scope-table — compiled summary of the scope grid for SKILL.md
+// scope-table - compiled summary of the scope grid for SKILL.md
 //
 // Emits a Markdown table delimited by BEGIN/END HTML comments. SKILL.md
 // has a matching region that is regenerated via this tool. --check mode
@@ -4276,7 +4321,7 @@ export function findScopeByKeyword(kw: string): string[] {
 // fixture SKILL.md (so drift tests never mutate the real file).
 
 const SCOPE_TABLE_BEGIN =
-  "<!-- BEGIN: compiled scope grid via `bun aidlc-utility.ts scope-table` — do NOT hand-edit -->";
+  "<!-- BEGIN: compiled scope grid via `bun aidlc-utility.ts scope-table` - do NOT hand-edit -->";
 const SCOPE_TABLE_END =
   "<!-- END: compiled scope grid -->";
 
@@ -4316,19 +4361,12 @@ function skillMdPath(): string {
   return harnessSkill;
 }
 
-function handleScopeTable(
-  _projectDir: string,
-  _flags: Record<string, string>,
-  rawArgs: string[]
+function checkGeneratedTableRegion(
+  verb: string,
+  beginMarker: string,
+  endMarker: string,
+  renderRegion: () => string,
 ): void {
-  const check = rawArgs.includes("--check");
-  const expectedRegion = canonicalScopeTableRegion(renderScopeTable());
-
-  if (!check) {
-    process.stdout.write(`${expectedRegion}\n`);
-    return;
-  }
-
   const skillPath = skillMdPath();
   let skillRaw: string;
   try {
@@ -4344,42 +4382,46 @@ function handleScopeTable(
   // (core.autocrlf=true) don't false-positive as drifted.
   skillRaw = skillRaw.replace(/\r\n/g, "\n");
 
-  const beginIdx = skillRaw.indexOf(SCOPE_TABLE_BEGIN);
-  const lastBeginIdx = skillRaw.lastIndexOf(SCOPE_TABLE_BEGIN);
-  const endIdx = skillRaw.indexOf(SCOPE_TABLE_END);
-  const lastEndIdx = skillRaw.lastIndexOf(SCOPE_TABLE_END);
-  if (beginIdx === -1 || endIdx === -1) {
-    console.error(
-      `SKILL.md at ${skillPath} is missing scope-table markers. Expected:\n  ${SCOPE_TABLE_BEGIN}\n  ${SCOPE_TABLE_END}`
-    );
-    process.exit(1);
-  }
-  if (beginIdx !== lastBeginIdx || endIdx !== lastEndIdx) {
-    console.error(
-      `SKILL.md at ${skillPath} has duplicate scope-table markers. Expected exactly one BEGIN and one END.`
-    );
-    process.exit(1);
-  }
-  if (endIdx < beginIdx) {
-    console.error(
-      `SKILL.md at ${skillPath} has scope-table markers out of order (END before BEGIN).`
-    );
+  let located: GeneratedRegionLocation;
+  try {
+    located = findGeneratedRegion(skillRaw, beginMarker, endMarker, verb, skillPath);
+  } catch (err) {
+    console.error(errorMessage(err));
     process.exit(1);
   }
 
-  const currentRegion = skillRaw.substring(
-    beginIdx,
-    endIdx + SCOPE_TABLE_END.length
-  );
+  const currentRegion = skillRaw.substring(located.beginIdx, located.regionEndIdx);
+  const expectedRegion = renderRegion();
 
   if (currentRegion === expectedRegion) {
     return; // exit 0 silent
   }
 
   console.error(
-    `SKILL.md scope-table region is out of date. Refresh it from \`bun ${harnessDir()}/tools/aidlc-utility.ts scope-table\`.`
+    `SKILL.md ${verb} region is out of date. Refresh it from \`bun ${harnessDir()}/tools/aidlc-utility.ts ${verb}\`.`
   );
   process.exit(1);
+}
+
+function handleScopeTable(
+  _projectDir: string,
+  _flags: Record<string, string>,
+  rawArgs: string[]
+): void {
+  const check = rawArgs.includes("--check");
+  const expectedRegion = canonicalScopeTableRegion(renderScopeTable());
+
+  if (!check) {
+    process.stdout.write(`${expectedRegion}\n`);
+    return;
+  }
+
+  checkGeneratedTableRegion(
+    "scope-table",
+    SCOPE_TABLE_BEGIN,
+    SCOPE_TABLE_END,
+    () => expectedRegion,
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -4442,57 +4484,12 @@ function handleStageTable(
     return;
   }
 
-  const skillPath = skillMdPath();
-  let skillRaw: string;
-  try {
-    skillRaw = readFileSync(skillPath, "utf-8");
-  } catch (err) {
-    console.error(
-      `SKILL.md not readable at ${skillPath}: ${errorMessage(err)}`
-    );
-    process.exit(1);
-  }
-
-  // Normalize line endings before comparison so Windows CRLF files
-  // (core.autocrlf=true) don't false-positive as drifted.
-  skillRaw = skillRaw.replace(/\r\n/g, "\n");
-
-  const beginIdx = skillRaw.indexOf(STAGE_TABLE_BEGIN);
-  const lastBeginIdx = skillRaw.lastIndexOf(STAGE_TABLE_BEGIN);
-  const endIdx = skillRaw.indexOf(STAGE_TABLE_END);
-  const lastEndIdx = skillRaw.lastIndexOf(STAGE_TABLE_END);
-  if (beginIdx === -1 || endIdx === -1) {
-    console.error(
-      `SKILL.md at ${skillPath} is missing stage-table markers. Expected:\n  ${STAGE_TABLE_BEGIN}\n  ${STAGE_TABLE_END}`
-    );
-    process.exit(1);
-  }
-  if (beginIdx !== lastBeginIdx || endIdx !== lastEndIdx) {
-    console.error(
-      `SKILL.md at ${skillPath} has duplicate stage-table markers. Expected exactly one BEGIN and one END.`
-    );
-    process.exit(1);
-  }
-  if (endIdx < beginIdx) {
-    console.error(
-      `SKILL.md at ${skillPath} has stage-table markers out of order (END before BEGIN).`
-    );
-    process.exit(1);
-  }
-
-  const currentRegion = skillRaw.substring(
-    beginIdx,
-    endIdx + STAGE_TABLE_END.length
+  checkGeneratedTableRegion(
+    "stage-table",
+    STAGE_TABLE_BEGIN,
+    STAGE_TABLE_END,
+    () => expectedRegion,
   );
-
-  if (currentRegion === expectedRegion) {
-    return; // exit 0 silent
-  }
-
-  console.error(
-    `SKILL.md stage-table region is out of date. Refresh it from \`bun ${harnessDir()}/tools/aidlc-utility.ts stage-table\`.`
-  );
-  process.exit(1);
 }
 
 // ---------------------------------------------------------------------------

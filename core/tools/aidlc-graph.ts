@@ -71,6 +71,7 @@ import {
   resolveProjectDir,
   type ScopeDefinition,
   type StageEntry,
+  stageEnabledBySelection,
   toPosix,
   validScopes,
   withAuditLock,
@@ -1136,19 +1137,22 @@ export function keywordCollisions(granted: string[]): string[] {
 }
 
 /** Union of produces[] and optional_produces[] across all stages. */
+export function artifactsRegistryFor(stages: readonly GraphStage[]): ReadonlySet<string> {
+  const names = new Set<string>();
+  for (const stage of stages) {
+    for (const name of stage.produces ?? []) {
+      names.add(name);
+    }
+    for (const name of stage.optional_produces ?? []) {
+      names.add(name);
+    }
+  }
+  return names;
+}
+
 export function artifactsRegistry(): ReadonlySet<string> {
   if (!_artifactsRegistry) {
-    const stages = loadGraph();
-    const names = new Set<string>();
-    for (const stage of stages) {
-      for (const name of stage.produces ?? []) {
-        names.add(name);
-      }
-      for (const name of stage.optional_produces ?? []) {
-        names.add(name);
-      }
-    }
-    _artifactsRegistry = names;
+    _artifactsRegistry = artifactsRegistryFor(loadGraph());
   }
   return _artifactsRegistry;
 }
@@ -1446,12 +1450,6 @@ function titleCaseSlug(slug: string): string {
 
 function stagePluginOwner(stage: Pick<GraphStage, "plugin">): string {
   return stage.plugin ?? "aidlc";
-}
-
-function stageEnabledBySelection(stage: GraphStage): boolean {
-  if (stage.phase === "initialization") return true;
-  const selected = pluginsEnabled();
-  return selected === null || selected.has(stagePluginOwner(stage));
 }
 
 function applyPluginSelection(stages: GraphStage[]): void {

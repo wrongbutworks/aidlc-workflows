@@ -1,4 +1,4 @@
-// covers: function:loadScopeMetadata, function:selectionAwareDefaultScope
+// covers: function:loadScopeMetadata, function:selectionAwareDefaultScope, function:stageEnabledBySelection
 
 import { afterEach, describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
@@ -16,12 +16,11 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
-  _resetHarnessDataForTests,
-  _resetScopeMappingForTests,
-  _resetStageGraphForTests,
   loadScopeMetadata,
   selectionAwareDefaultScope,
+  stageEnabledBySelection,
 } from "../../core/tools/aidlc-lib.ts";
+import { withEnvAndFreshCaches } from "../harness/fixtures.ts";
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const CORE_TOOLS = join(REPO_ROOT, "core", "tools");
@@ -59,40 +58,13 @@ afterEach(() => {
   }
   delete process.env.AIDLC_SCOPES_DIR;
   delete process.env.AIDLC_SCOPE_MAPPING;
-  _resetScopeMappingForTests();
-  _resetStageGraphForTests();
-  _resetHarnessDataForTests();
+  withEnvAndFreshCaches({}, () => undefined);
 });
 
 function tempDir(prefix: string): string {
   const dir = mkdtempSync(join(tmpdir(), prefix));
   tempDirs.push(dir);
   return dir;
-}
-
-function resetCaches(): void {
-  _resetScopeMappingForTests();
-  _resetStageGraphForTests();
-  _resetHarnessDataForTests();
-}
-
-function withEnv<T>(env: Record<string, string | undefined>, fn: () => T): T {
-  const prior = new Map<string, string | undefined>();
-  for (const key of Object.keys(env)) prior.set(key, process.env[key]);
-  for (const [key, value] of Object.entries(env)) {
-    if (value === undefined) delete process.env[key];
-    else process.env[key] = value;
-  }
-  resetCaches();
-  try {
-    return fn();
-  } finally {
-    for (const [key, value] of prior) {
-      if (value === undefined) delete process.env[key];
-      else process.env[key] = value;
-    }
-    resetCaches();
-  }
 }
 
 function writeScope(dir: string, name: string, skeleton?: string): void {
@@ -252,7 +224,7 @@ describe("t224 skeleton scope metadata", () => {
     writeScope(dir, "skeleton-off", "off");
     writeScope(dir, "skeleton-absent");
 
-    withEnv({ AIDLC_SCOPES_DIR: dir }, () => {
+    withEnvAndFreshCaches({ AIDLC_SCOPES_DIR: dir }, () => {
       const metadata = loadScopeMetadata();
       expect(metadata["skeleton-on"].skeleton).toBe(true);
       expect(metadata["skeleton-off"].skeleton).toBe(false);
@@ -262,12 +234,12 @@ describe("t224 skeleton scope metadata", () => {
     const invalidDir = tempDir("aidlc-t224-invalid-scopes-");
     writeScope(invalidDir, "bad-skeleton", "maybe");
     expect(() =>
-      withEnv({ AIDLC_SCOPES_DIR: invalidDir }, () => loadScopeMetadata()),
+      withEnvAndFreshCaches({ AIDLC_SCOPES_DIR: invalidDir }, () => loadScopeMetadata()),
     ).toThrow(new RegExp(`${join(invalidDir, "bad-skeleton.md").replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}.*maybe`));
   });
 
   test("core skeleton defaults match the previous six-scope behavior", () => {
-    withEnv({ AIDLC_SCOPES_DIR: CORE_SCOPES }, () => {
+    withEnvAndFreshCaches({ AIDLC_SCOPES_DIR: CORE_SCOPES }, () => {
       const metadata = loadScopeMetadata();
       const skeletonOn = Object.values(metadata)
         .filter((scope) => scope.skeleton)
@@ -279,6 +251,25 @@ describe("t224 skeleton scope metadata", () => {
 });
 
 describe("t224 env-scope fallback under plugin-only selection", () => {
+  test("stageEnabledBySelection keeps initialization enabled under plugin-only selection", () => {
+    const project = makePluginOnlyInstall();
+    const script = [
+      `import { stageEnabledBySelection } from ${JSON.stringify(join(project, ".claude", "tools", "aidlc-lib.ts"))};`,
+      "console.log(JSON.stringify({",
+      "  init: stageEnabledBySelection({ plugin: 'aidlc', phase: 'initialization' }),",
+      "  construction: stageEnabledBySelection({ plugin: 'aidlc', phase: 'construction' }),",
+      "}));",
+    ].join("\n");
+    const result = spawnSync(BUN, ["-e", script], {
+      cwd: project,
+      encoding: "utf-8",
+      env: { ...process.env, AIDLC_HARNESS_DIR: ".claude" },
+    });
+    expect(result.status).toBe(0);
+    expect(JSON.parse(result.stdout)).toEqual({ init: true, construction: false });
+    expect(stageEnabledBySelection({ plugin: "aidlc", phase: "initialization" })).toBe(true);
+  });
+
   test("selectionAwareDefaultScope notes sole-plugin substitution only when it substitutes", () => {
     const dir = tempDir("aidlc-t224-scope-mapping-");
     const mappingPath = join(dir, "scope-mapping.json");
@@ -300,7 +291,7 @@ describe("t224 env-scope fallback under plugin-only selection", () => {
       "utf-8",
     );
 
-    withEnv({ AIDLC_SCOPE_MAPPING: mappingPath }, () => {
+    withEnvAndFreshCaches({ AIDLC_SCOPE_MAPPING: mappingPath }, () => {
       const fallback = selectionAwareDefaultScope("feature");
       expect(fallback.scope).toBe("test-pro-validation");
       expect(fallback.error).toBeUndefined();
@@ -333,7 +324,7 @@ describe("t224 env-scope fallback under plugin-only selection", () => {
       "utf-8",
     );
 
-    withEnv({ AIDLC_SCOPE_MAPPING: mappingPath }, () => {
+    withEnvAndFreshCaches({ AIDLC_SCOPE_MAPPING: mappingPath }, () => {
       const preferred = selectionAwareDefaultScope("feature");
       expect(preferred.scope).toBe("feature");
       expect(preferred.error).toBeUndefined();

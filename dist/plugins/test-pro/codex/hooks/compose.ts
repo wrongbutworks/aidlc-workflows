@@ -41,7 +41,7 @@ const STAGES_DIR = join(HARNESS_DIR, "aidlc-common", "stages");
 const SKILLS_DIR = join(HARNESS_DIR, "skills");
 const PHASES = ["initialization", "ideation", "inception", "construction", "operation"];
 const SCOPE_TABLE_BEGIN =
-  "<!-- BEGIN: compiled scope grid via `bun aidlc-utility.ts scope-table` — do NOT hand-edit -->";
+  "<!-- BEGIN: compiled scope grid via `bun aidlc-utility.ts scope-table` - do NOT hand-edit -->";
 const SCOPE_TABLE_END = "<!-- END: compiled scope grid -->";
 const STAGE_TABLE_BEGIN =
   "<!-- BEGIN: compiled stage graph via `bun aidlc-utility.ts stage-table` - do NOT hand-edit -->";
@@ -176,6 +176,7 @@ function selectedPlugins(): Set<string> | null {
 }
 
 function pluginEnabledBySelection(): boolean {
+  // Keep in sync with aidlc-lib.ts stageEnabledBySelection.
   const selected = selectedPlugins();
   return selected === null || selected.has(PLUGIN_NAME);
 }

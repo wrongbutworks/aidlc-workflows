@@ -61,6 +61,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   errorMessage,
+  frontmatterBlock,
   harnessDir,
   isPluginEnabled,
   loadScopeMetadataAll,
@@ -335,8 +336,7 @@ const RUNNER_GEN_MARKER_VALUE = "aidlc-runner-gen";
 type RunnerSlugParser = (body: string) => string | null;
 
 function leadingFrontmatter(body: string): string | null {
-  const m = body.match(/^---\r?\n([\s\S]*?)\r?\n---/);
-  return m?.[1] ?? null;
+  return frontmatterBlock(body);
 }
 
 function hasRunnerGenMarker(body: string): boolean {
@@ -504,9 +504,8 @@ interface ScopeFront {
 // missing `name` (the generator must never silently emit a malformed runner).
 function readScopeFront(path: string): ScopeFront {
   const body = readFileSync(path, "utf-8");
-  const m = body.match(/^---\r?\n([\s\S]*?)\r?\n---/);
-  if (!m) throw new Error(`Scope file missing frontmatter: ${path}`);
-  const fm = m[1];
+  const fm = frontmatterBlock(body);
+  if (fm === null) throw new Error(`Scope file missing frontmatter: ${path}`);
   const name = scalarField(fm, "name");
   if (!name) throw new Error(`Scope file ${path} missing required frontmatter: name`);
   const plugin = scalarField(fm, "plugin");
