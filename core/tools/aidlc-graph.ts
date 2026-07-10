@@ -1336,11 +1336,44 @@ export function mergeComposedScopes(fresh: ScopeGrid, onDiskJson: string | null)
   return sorted;
 }
 
-function filterScopeGrid(grid: ScopeGrid, allowedScopes: ReadonlySet<string> | null): ScopeGrid {
+function composedScopeNames(
+  onDiskJson: string | null,
+  stockScopeNames: ReadonlySet<string>,
+): ReadonlySet<string> {
+  if (!onDiskJson) return new Set();
+  let onDisk: unknown;
+  try {
+    onDisk = JSON.parse(onDiskJson);
+  } catch {
+    return new Set();
+  }
+  if (typeof onDisk !== "object" || onDisk === null || Array.isArray(onDisk)) {
+    return new Set();
+  }
+  return new Set(
+    Object.keys(onDisk as Record<string, unknown>)
+      .filter((name) => !stockScopeNames.has(name))
+      .sort(),
+  );
+}
+
+function stageDeclaredScopeNames(stages: readonly Pick<GraphStage, "scopes">[]): ReadonlySet<string> {
+  const names = new Set<string>();
+  for (const stage of stages) {
+    for (const name of stage.scopes ?? []) names.add(name);
+  }
+  return names;
+}
+
+function filterScopeGrid(
+  grid: ScopeGrid,
+  allowedScopes: ReadonlySet<string> | null,
+  exemptScopes: ReadonlySet<string> = new Set(),
+): ScopeGrid {
   if (allowedScopes === null) return grid;
   const filtered: ScopeGrid = {};
   for (const scope of Object.keys(grid).sort()) {
-    if (allowedScopes.has(scope)) filtered[scope] = grid[scope];
+    if (allowedScopes.has(scope) || exemptScopes.has(scope)) filtered[scope] = grid[scope];
   }
   return filtered;
 }
@@ -1597,6 +1630,7 @@ export function compileStageGraph(): {
 
   // Sort by numeric order (phase-prefix.index).
   stages.sort((a, b) => numericStageOrder(a.number, b.number));
+  const stockScopeNames = stageDeclaredScopeNames(stages);
 
   // Resolve per-stage rule chain. Strict-additive: every applicable rule
   // appears in rules_in_context (org+team+project + phase when stage's
@@ -1657,6 +1691,12 @@ export function compileStageGraph(): {
   } catch {
     /* first compile: no grid on disk yet */
   }
+  const selectedScopeNames = enabledScopeNames();
+  const composedNames = composedScopeNames(onDiskGrid, stockScopeNames);
+  const seededScopeNames =
+    selectedScopeNames === null
+      ? undefined
+      : new Set([...selectedScopeNames].filter((name) => !composedNames.has(name)));
   return {
     json: canonicalStageGraphJson(stages),
     gridJson: canonicalScopeGridJson(
@@ -1664,11 +1704,12 @@ export function compileStageGraph(): {
         mergeComposedScopes(
           transposeScopeGrid(
             stages.filter((s) => s.enabled !== false),
-            enabledScopeNames() ?? undefined,
+            seededScopeNames,
           ),
           onDiskGrid,
         ),
-        enabledScopeNames(),
+        selectedScopeNames,
+        composedNames,
       ),
     ),
     stages,

@@ -52,6 +52,15 @@ function runUtility(project: string, args: string[]) {
   });
 }
 
+function runOrchestrate(project: string, args: string[]) {
+  return spawnSync(BUN, [".claude/tools/aidlc-orchestrate.ts", ...args], {
+    cwd: project,
+    encoding: "utf-8",
+    timeout: TIMEOUT_MS - 5_000,
+    env: { ...process.env, CLAUDE_PROJECT_DIR: project, AIDLC_HARNESS_DIR: ".claude" },
+  });
+}
+
 function stageTableRegion(project: string): string {
   const skill = readFileSync(join(project, ".claude", "skills", "aidlc", "SKILL.md"), "utf-8");
   const begin = skill.indexOf(STAGE_TABLE_BEGIN);
@@ -79,6 +88,12 @@ function composeTestPro(project: string, pluginBuilt: string): void {
 function copyClaudeInstall(project: string): void {
   cpSync(CLAUDE_DIST, join(project, ".claude"), { recursive: true });
   cpSync(join(CLAUDE_DIST_ROOT, "aidlc"), join(project, "aidlc"), { recursive: true });
+}
+
+function writeSortedGrid(project: string, scopeGrid: Record<string, { stages: Record<string, string> }>): void {
+  const sorted: Record<string, { stages: Record<string, string> }> = {};
+  for (const key of Object.keys(scopeGrid).sort()) sorted[key] = scopeGrid[key];
+  writeFileSync(gridPath(project), `${JSON.stringify(sorted, null, 2)}\n`, "utf-8");
 }
 
 describe("t223 plugin selection — install chooses visible plugin surfaces", () => {
@@ -240,5 +255,64 @@ describe("t223 plugin selection — install chooses visible plugin surfaces", ()
     expect(result.stderr).toContain("intent-statement");
     expect(result.stderr).toContain("intent-capture");
     expect(result.stderr).toContain("aidlc");
+  });
+
+  test("composed scopes survive plugin selection with intact grid and runner", () => {
+    const composedProj = join(tmp, "composed");
+    copyClaudeInstall(composedProj);
+    composeTestPro(composedProj, pluginBuilt);
+
+    const scopeName = "custom-composed";
+    const scopeDir = join(composedProj, ".claude", "scopes");
+    mkdirSync(scopeDir, { recursive: true });
+    writeFileSync(
+      join(scopeDir, "aidlc-custom-composed.md"),
+      [
+        "---",
+        `name: ${scopeName}`,
+        "depth: Composed",
+        "keywords: []",
+        "runner: true",
+        "---",
+        "",
+        "# custom-composed",
+        "",
+      ].join("\n"),
+      "utf-8",
+    );
+
+    const seededGrid = grid(composedProj);
+    const seededStages = { ...seededGrid.feature.stages };
+    const seededEntry = { stages: seededStages };
+    const seededEntryJson = JSON.stringify(seededEntry);
+    seededGrid[scopeName] = seededEntry;
+    writeSortedGrid(composedProj, seededGrid);
+
+    const firstExecute = Object.entries(seededStages).find(
+      ([slug, value]) =>
+        value === "EXECUTE" &&
+        !["workspace-scaffold", "workspace-detection", "state-init"].includes(slug),
+    )?.[0];
+    expect(firstExecute).toBe("intent-capture");
+
+    const selectedPluginOnly = runUtility(composedProj, ["select-plugins", "test-pro"]);
+    expect(selectedPluginOnly.status).toBe(0);
+    expect(grid(composedProj)[scopeName].stages).toEqual(seededStages);
+    expect(JSON.stringify(grid(composedProj)[scopeName])).toBe(seededEntryJson);
+    expect(existsSync(join(composedProj, ".claude", "skills", "aidlc-custom-composed", "SKILL.md"))).toBe(true);
+
+    const selectedBoth = runUtility(composedProj, ["select-plugins", "aidlc,test-pro"]);
+    expect(selectedBoth.status).toBe(0);
+    expect(JSON.stringify(grid(composedProj)[scopeName])).toBe(seededEntryJson);
+
+    const init = runUtility(composedProj, ["init", "--scope", scopeName, "--project-dir", composedProj]);
+    expect(init.status).toBe(0);
+
+    const next = runOrchestrate(composedProj, ["next", "--scope", scopeName]);
+    expect(next.status).toBe(0);
+    expect(next.stdout).not.toContain("Unknown scope");
+    const directive = JSON.parse(next.stdout.trim());
+    expect(directive.kind).toBe("run-stage");
+    expect(directive.stage).toBe(firstExecute);
   });
 });

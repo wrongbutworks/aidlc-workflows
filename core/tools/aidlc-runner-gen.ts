@@ -59,7 +59,7 @@ import {
 } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { errorMessage, harnessDir, isPluginEnabled } from "./aidlc-lib.ts";
+import { errorMessage, harnessDir, isPluginEnabled, scopeGridPath } from "./aidlc-lib.ts";
 import { type GraphStage, loadGraph } from "./aidlc-graph.ts";
 
 // Resolve the skills/ dir off THIS module's location (tools/ → ../skills/) so the
@@ -396,6 +396,16 @@ function defaultSkillsDir(): string {
   return SKILLS_DIR;
 }
 
+function scopeNamesInWrittenGrid(): ReadonlySet<string> {
+  try {
+    const parsed = JSON.parse(readFileSync(scopeGridPath(), "utf-8"));
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return new Set();
+    return new Set(Object.keys(parsed as Record<string, unknown>));
+  } catch {
+    return new Set();
+  }
+}
+
 // Extract a simple scalar frontmatter field (inline or single-quoted/double-
 // quoted). Mirrors aidlc-lib.ts scalarField for the fields the generator reads.
 function scalarField(frontmatter: string, key: string): string {
@@ -450,6 +460,7 @@ function readScopeFront(path: string): ScopeFront {
 export function discoverScopes(): Record<string, ScopeFront> {
   const dir = scopesDir();
   const out: Record<string, ScopeFront> = {};
+  const gridNames = scopeNamesInWrittenGrid();
   let files: string[];
   try {
     files = readdirSync(dir).filter((f) => f.endsWith(".md")).sort();
@@ -458,7 +469,7 @@ export function discoverScopes(): Record<string, ScopeFront> {
   }
   for (const f of files) {
     const front = readScopeFront(join(dir, f));
-    if (!isPluginEnabled(front.plugin ?? "aidlc")) continue;
+    if (!isPluginEnabled(front.plugin ?? "aidlc") && !gridNames.has(front.name)) continue;
     out[front.name] = front;
   }
   return out;
