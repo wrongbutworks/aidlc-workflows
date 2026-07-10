@@ -96,6 +96,14 @@ your own project at the space level (`aidlc/knowledge/`, a sibling of the space'
 the framework never overwrites it. Everything else above is framework source you
 author in `core/`.
 
+## Naming rules and where they are enforced
+
+Stage filename stems must equal frontmatter `slug`; `aidlc-graph compile` rejects
+stem mismatches and duplicate stage slugs as hard errors. Sensor filename/id
+checks are compile-time hard errors. Scope and agent duplicate declared names are
+loader errors that name both files; scope/agent filename-to-name drift is reported
+by `/aidlc --doctor` as an advisory so authors can rename the file or fix `name`.
+
 ---
 
 ## The build model: author in `core/`, regenerate the harnesses

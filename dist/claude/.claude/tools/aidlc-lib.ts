@@ -3020,6 +3020,7 @@ export function loadScopeMetadata(): Record<string, ScopeMetadata> {
   if (_scopeMetadata !== null) return _scopeMetadata;
   const dir = scopesDir();
   const out: Record<string, ScopeMetadata> = {};
+  const nameToFile = new Map<string, string>();
   let files: string[];
   try {
     // Sort so readdirSync order is platform-independent — the derived
@@ -3030,12 +3031,20 @@ export function loadScopeMetadata(): Record<string, ScopeMetadata> {
     files = [];
   }
   for (const f of files) {
-    const body = readFileSync(join(dir, f), "utf-8");
+    const filePath = join(dir, f);
+    const body = readFileSync(filePath, "utf-8");
     const m = body.match(/^---\r?\n([\s\S]*?)\r?\n---/);
-    if (!m) throw new Error(`Scope file missing frontmatter: ${join(dir, f)}`);
+    if (!m) throw new Error(`Scope file missing frontmatter: ${filePath}`);
     const fm = m[1];
     const name = scalarField(fm, "name");
-    if (!name) throw new Error(`Scope file ${join(dir, f)} missing required frontmatter: name`);
+    if (!name) throw new Error(`Scope file ${filePath} missing required frontmatter: name`);
+    const previousFile = nameToFile.get(name);
+    if (previousFile) {
+      throw new Error(
+        `Duplicate scope name "${name}" in ${filePath}: already declared in ${previousFile}. Rename one of them.`
+      );
+    }
+    nameToFile.set(name, filePath);
     const meta: ScopeMetadata = {
       name,
       depth: scalarField(fm, "depth"),
@@ -3152,18 +3161,41 @@ export interface AgentMetadata {
   examples: string[];
 }
 
-const AGENTS_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "agents");
+// .claude/agents/ holds one <slug>.md per persona. AIDLC_AGENTS_DIR env-var
+// seam mirrors AIDLC_SCOPES_DIR / AIDLC_SENSORS_DIR so fixture tests can point
+// the agent-metadata loader at an isolated tree. Evaluated at call time so
+// tests that set/unset mid-process see the change.
+export function agentsDir(): string {
+  return process.env.AIDLC_AGENTS_DIR ?? join(dirname(fileURLToPath(import.meta.url)), "..", "agents");
+}
 
 let _agents: AgentMetadata[] | null = null;
 
 export function loadAgents(): AgentMetadata[] {
   if (!_agents) {
-    const files = readdirSync(AGENTS_DIR).filter((f) => f.endsWith(".md"));
-    _agents = files
-      .map((f) => parseAgentFrontmatter(join(AGENTS_DIR, f)))
-      .sort((a, b) => a.slug.localeCompare(b.slug));
+    const dir = agentsDir();
+    const slugToFile = new Map<string, string>();
+    const agents: AgentMetadata[] = [];
+    const files = readdirSync(dir).filter((f) => f.endsWith(".md")).sort();
+    for (const f of files) {
+      const filePath = join(dir, f);
+      const agent = parseAgentFrontmatter(filePath);
+      const previousFile = slugToFile.get(agent.slug);
+      if (previousFile) {
+        throw new Error(
+          `Duplicate agent slug "${agent.slug}" in ${filePath}: already declared in ${previousFile}. Rename one of them.`
+        );
+      }
+      slugToFile.set(agent.slug, filePath);
+      agents.push(agent);
+    }
+    _agents = agents.sort((a, b) => a.slug.localeCompare(b.slug));
   }
   return _agents;
+}
+
+export function _resetAgentsForTests(): void {
+  _agents = null;
 }
 
 function parseAgentFrontmatter(path: string): AgentMetadata {

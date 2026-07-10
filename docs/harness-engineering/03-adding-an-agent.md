@@ -61,7 +61,8 @@ calls you actually make when authoring one.
 **`name` must match the filename stem.** A file at
 `aidlc-data-governance-agent.md` declares `name: aidlc-data-governance-agent`.
 The parser keys off this, and a mismatch is the easiest way to author an agent
-that never resolves.
+that never resolves. The loader rejects duplicate agent `name` values across
+files and names both files in the error.
 
 **An agent inherits the full session toolset by default.** None of the 11
 shipped agents declare a `tools:` allowlist, so each one reaches every tool the

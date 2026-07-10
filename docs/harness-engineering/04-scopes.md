@@ -31,11 +31,14 @@ The frontmatter fields divide into one required field and three optional knobs:
 
 | Field | Required | What it does |
 |-------|----------|--------------|
-| `name` | Yes | The scope name. Must equal the filename stem (`aidlc-feature.md` → `feature`). |
+| `name` | Yes | The scope name. Core files use `aidlc-<name>.md`; plugin scope files use a stem equal to `name`. |
 | `depth` | Yes | The default detail level — `Minimal`, `Standard`, or `Comprehensive`. |
 | `testStrategy` | No | Overrides test volume independent of depth. Defaults to matching `depth`. |
 | `keywords` | No | Natural-language triggers for `/aidlc <freeform text>` auto-detection. Empty list opts out. |
 | `description` | No | The one-liner rendered in `/aidlc --help`. (The compiled scope-table in SKILL.md shows only Scope / Depth / TestStrategy / EXECUTE / Total, leaving the description out.) |
+
+The loader rejects duplicate scope `name` values across files and names both
+files in the error.
 
 **2. The membership tag — each stage's `scopes:` frontmatter.** A stage names the scopes it runs under in its own frontmatter, in `core/aidlc-common/stages/<phase>/<slug>.md`:
 

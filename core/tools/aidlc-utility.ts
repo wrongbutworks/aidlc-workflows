@@ -9,7 +9,7 @@ import {
   statSync,
   writeFileSync,
 } from "node:fs";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { appendAuditEntry, appendAuditEntryUnlocked } from "./aidlc-audit.ts";
 import {
@@ -36,6 +36,7 @@ import {
   detectLeakedLocks,
   docsDir,
   knowledgeDir,
+  agentsDir,
   emitError,
   errorMessage,
   escapeRegex,
@@ -81,6 +82,7 @@ import {
   setStageSuffix,
   scopeGridPath,
   scopesDir,
+  scalarField,
   stagesInScope,
   stateFilePath,
   withAuditLock,
@@ -396,6 +398,66 @@ export const PRACTICES_STALENESS_DAYS = 90;
 // covers a generous LLM Task call budget (Haiku 30s + retry + parse).
 export const MERGE_DISPATCH_TIMEOUT_SEC = 60;
 
+interface NamingMismatch {
+  file: string;
+  stem: string;
+  name: string;
+}
+
+function frontmatterFields(filePath: string, kind: "Agent" | "Scope"): { name: string; plugin: string } {
+  const body = readFileSync(filePath, "utf-8");
+  const m = body.match(/^---\r?\n([\s\S]*?)\r?\n---/);
+  if (!m) throw new Error(`${kind} file missing frontmatter: ${filePath}`);
+  const name = scalarField(m[1], "name");
+  if (!name) throw new Error(`${kind} file ${filePath} missing required frontmatter: name`);
+  return { name, plugin: scalarField(m[1], "plugin") };
+}
+
+function scopeFilenameMatchesDeclaredName(stem: string, name: string, plugin: string): boolean {
+  if (plugin) return stem === name;
+  return stem === name || stem === `aidlc-${name}`;
+}
+
+function namingMismatches(
+  dir: string,
+  kind: "Agent" | "Scope",
+  matches: (stem: string, name: string, plugin: string) => boolean,
+): NamingMismatch[] {
+  if (!existsSync(dir)) return [];
+  const mismatches: NamingMismatch[] = [];
+  for (const f of readdirSync(dir).filter((name) => name.endsWith(".md")).sort()) {
+    const filePath = join(dir, f);
+    if (!statSync(filePath).isFile()) continue;
+    const { name, plugin } = frontmatterFields(filePath, kind);
+    const stem = basename(f, ".md");
+    if (!matches(stem, name, plugin)) {
+      mismatches.push({ file: filePath, stem, name });
+    }
+  }
+  return mismatches;
+}
+
+function pushNamingAdvisory(
+  results: Array<{ pass: boolean; label: string; fix?: string }>,
+  label: "Agent" | "Scope",
+  mismatches: NamingMismatch[],
+): void {
+  if (mismatches.length === 0) {
+    results.push({
+      pass: true,
+      label: `${label} filename/name consistency: all ${label.toLowerCase()} files match declared names`,
+    });
+    return;
+  }
+  const detail = mismatches
+    .map((m) => `${m.file} stem "${m.stem}" declares name "${m.name}"`)
+    .join("; ");
+  results.push({
+    pass: true,
+    label: `${label} filename/name consistency: ${mismatches.length} mismatch(es) (advisory): ${detail}. Rename the file or fix the name.`,
+  });
+}
+
 function handleDoctor(projectDir: string): void {
   const results: Array<{ pass: boolean; label: string; fix?: string }> = [];
   const isWindows = process.platform === "win32";
@@ -635,7 +697,37 @@ function handleDoctor(projectDir: string): void {
     fix: `copy the workspace shell from \`dist/${harnessDir().replace(/^\./, "")}/\` into your project root`,
   });
 
-  // 5a. Git submodules - an uninitialized submodule leaves its dir empty, so the
+  // 5a. Naming consistency for agent/scope files. Duplicate declared names are
+  // loader corruption and fail through loadAgents()/validScopes(); stem/name
+  // drift is recoverable authoring drift, so it is advisory and names the file.
+  try {
+    pushNamingAdvisory(
+      results,
+      "Agent",
+      namingMismatches(agentsDir(), "Agent", (stem, name) => stem === name),
+    );
+  } catch (e) {
+    results.push({
+      pass: false,
+      label: "Agent filename/name consistency: check failed",
+      fix: errorMessage(e),
+    });
+  }
+  try {
+    pushNamingAdvisory(
+      results,
+      "Scope",
+      namingMismatches(scopesDir(), "Scope", scopeFilenameMatchesDeclaredName),
+    );
+  } catch (e) {
+    results.push({
+      pass: false,
+      label: "Scope filename/name consistency: check failed",
+      fix: errorMessage(e),
+    });
+  }
+
+  // 5b. Git submodules - an uninitialized submodule leaves its dir empty, so the
   // scanner would classify a submodule-only workspace greenfield and auto-skip
   // reverse-engineering. This ADVISORY row surfaces the state and the remedy.
   // pass:true always (an uninitialized submodule is a user-environment pre-flight

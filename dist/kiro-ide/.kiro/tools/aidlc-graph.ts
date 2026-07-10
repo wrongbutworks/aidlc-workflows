@@ -42,9 +42,10 @@
 // See docs/reference/16-artifact-vocabulary.md for artifact naming.
 
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  _resetAgentsForTests,
   _resetScopeMappingForTests,
   activeSpace,
   type AgentMetadata,
@@ -329,13 +330,14 @@ let _scopeGrid: ScopeGrid | null = null;
 
 /** Reset all module-level caches. Test-only — used when fixture
  *  injection via AIDLC_STAGE_GRAPH swaps the backing file mid-process.
- *  Also resets lib.ts's scope-mapping cache (AIDLC_SCOPE_MAPPING env-seam)
- *  because the export consumer reads both graph and scope-mapping in one
- *  call; resetting only the local cache leaves a stale scope view. */
+ *  Also resets lib.ts's scope-mapping and agent caches (AIDLC_SCOPE_MAPPING /
+ *  AIDLC_AGENTS_DIR env-seams) because compile/export consumers read them in
+ *  the same call; resetting only the local cache leaves stale fixture views. */
 export function __resetGraphCache(): void {
   _graph = null;
   _artifactsRegistry = null;
   _scopeGrid = null;
+  _resetAgentsForTests();
   _resetScopeMappingForTests();
 }
 
@@ -1465,6 +1467,13 @@ export function compileStageGraph(): {
             `${filePath}: stage "${slug}" declares plugin "${plugin}", but plugin-owned stage slugs must start with "${plugin}-". Rename the slug or fix the plugin field.`
           );
         }
+      }
+
+      const filenameStem = basename(filePath, ".md");
+      if (filenameStem !== slug) {
+        throw new Error(
+          `${filePath}: stage filename stem "${filenameStem}" does not match frontmatter slug "${slug}". Rename the file or fix the slug.`
+        );
       }
 
       // Duplicate-slug guard: two YAML files claiming the same slug would

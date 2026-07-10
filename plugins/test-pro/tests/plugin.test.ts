@@ -16,6 +16,7 @@ import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   parseStageFrontmatter,
+  scalarField,
 } from "../../../dist/claude/.claude/tools/aidlc-lib.ts";
 import {
   type ValidationContext,
@@ -62,6 +63,8 @@ function coreStageSlugs(): Set<string> {
 
 const pluginStageFiles = walk(join(PLUGIN_ROOT, "stages"));
 const contributionFiles = walk(join(PLUGIN_ROOT, "contributions"));
+const pluginScopeFiles = walk(join(PLUGIN_ROOT, "scopes"));
+const pluginAgentFiles = walk(join(PLUGIN_ROOT, "agents"));
 
 function stageBodyAfterFrontmatter(raw: string): string {
   return raw.match(/^---\r?\n[\s\S]*?\r?\n---\r?\n?([\s\S]*)$/)?.[1] ?? "";
@@ -141,6 +144,27 @@ describe(`${PLUGIN_NAME} plugin — own content validation`, () => {
         for (const artifact of items) {
           expect(artifact.startsWith(`${PLUGIN_NAME}-`)).toBe(true);
         }
+      });
+    }
+  });
+
+  // --- Plugin-shipped scopes and agents keep filename identity stable ---
+  describe("scope and agent naming", () => {
+    for (const file of pluginScopeFiles) {
+      const name = file.split("/").pop()!;
+      test(`${name} scope name matches filename stem`, () => {
+        const raw = readFileSync(file, "utf-8");
+        const fm = raw.match(/^---\r?\n([\s\S]*?)\r?\n---/)?.[1] ?? "";
+        expect(scalarField(fm, "name")).toBe(basename(file, ".md"));
+      });
+    }
+
+    for (const file of pluginAgentFiles) {
+      const name = file.split("/").pop()!;
+      test(`${name} agent name matches filename stem`, () => {
+        const raw = readFileSync(file, "utf-8");
+        const fm = raw.match(/^---\r?\n([\s\S]*?)\r?\n---/)?.[1] ?? "";
+        expect(scalarField(fm, "name")).toBe(basename(file, ".md"));
       });
     }
   });
