@@ -3993,10 +3993,12 @@ export function canonicalScopeTableRegion(table: string): string {
 }
 
 function skillMdPath(): string {
-  return (
-    process.env.AIDLC_SKILL_MD_PATH ??
-    join(TOOLS_DIR, "..", "skills", "aidlc", "SKILL.md")
-  );
+  if (process.env.AIDLC_SKILL_MD_PATH) return process.env.AIDLC_SKILL_MD_PATH;
+  const harnessSkill = join(TOOLS_DIR, "..", "skills", "aidlc", "SKILL.md");
+  if (existsSync(harnessSkill)) return harnessSkill;
+  const agentsSkill = join(TOOLS_DIR, "..", "..", ".agents", "skills", "aidlc", "SKILL.md");
+  if (existsSync(agentsSkill)) return agentsSkill;
+  return harnessSkill;
 }
 
 function handleScopeTable(
@@ -4060,7 +4062,120 @@ function handleScopeTable(
   }
 
   console.error(
-    `SKILL.md scope-table region is out of date. Run \`bun ${harnessDir()}/tools/aidlc-utility.ts scope-table\` and paste the output between the BEGIN/END markers.`
+    `SKILL.md scope-table region is out of date. Refresh it from \`bun ${harnessDir()}/tools/aidlc-utility.ts scope-table\`.`
+  );
+  process.exit(1);
+}
+
+// ---------------------------------------------------------------------------
+// stage-table — compiled summary of the stage graph for SKILL.md
+//
+// Emits a Markdown table delimited by BEGIN/END HTML comments. SKILL.md
+// has a matching region that is regenerated via this tool. --check mode
+// byte-compares the current SKILL.md region against the rendered output
+// and exits 1 on drift. Mirrors scope-table above.
+//
+// AIDLC_SKILL_MD_PATH env-seam lets tests sandbox --check against a
+// fixture SKILL.md (so drift tests never mutate the real file).
+
+const STAGE_TABLE_BEGIN =
+  "<!-- BEGIN: compiled stage graph via `bun aidlc-utility.ts stage-table` - do NOT hand-edit -->";
+const STAGE_TABLE_END =
+  "<!-- END: compiled stage graph -->";
+
+function displayPhase(phase: string): string {
+  return phase.charAt(0).toUpperCase() + phase.slice(1);
+}
+
+function displayLeadAgent(agent: string): string {
+  return agent === "orchestrator" ? "(orchestrator)" : agent;
+}
+
+function displaySupportAgents(agents: string[] | undefined): string {
+  return Array.isArray(agents) && agents.length > 0 ? agents.join(", ") : "—";
+}
+
+/** Exported for t32 integration tests. */
+export function renderStageTable(): string {
+  const lines = [
+    "| Slug | # | Stage | Phase | Execution | Lead Agent | Support Agents | Mode |",
+    "|------|---|-------|-------|-----------|------------|----------------|------|",
+  ];
+  for (const stage of loadStageGraph()) {
+    lines.push(
+      `| ${stage.slug} | ${stage.number} | ${stage.name} | ${displayPhase(stage.phase)} | ${stage.execution} | ${displayLeadAgent(stage.lead_agent)} | ${displaySupportAgents(stage.support_agents)} | ${stage.mode} |`
+    );
+  }
+  return lines.join("\n");
+}
+
+/** Canonical byte-shape: BEGIN\n\n<table>\n\nEND. */
+export function canonicalStageTableRegion(table: string): string {
+  return `${STAGE_TABLE_BEGIN}\n\n${table}\n\n${STAGE_TABLE_END}`;
+}
+
+function handleStageTable(
+  _projectDir: string,
+  _flags: Record<string, string>,
+  rawArgs: string[]
+): void {
+  const check = rawArgs.includes("--check");
+  const expectedRegion = canonicalStageTableRegion(renderStageTable());
+
+  if (!check) {
+    process.stdout.write(`${expectedRegion}\n`);
+    return;
+  }
+
+  const skillPath = skillMdPath();
+  let skillRaw: string;
+  try {
+    skillRaw = readFileSync(skillPath, "utf-8");
+  } catch (err) {
+    console.error(
+      `SKILL.md not readable at ${skillPath}: ${errorMessage(err)}`
+    );
+    process.exit(1);
+  }
+
+  // Normalize line endings before comparison so Windows CRLF files
+  // (core.autocrlf=true) don't false-positive as drifted.
+  skillRaw = skillRaw.replace(/\r\n/g, "\n");
+
+  const beginIdx = skillRaw.indexOf(STAGE_TABLE_BEGIN);
+  const lastBeginIdx = skillRaw.lastIndexOf(STAGE_TABLE_BEGIN);
+  const endIdx = skillRaw.indexOf(STAGE_TABLE_END);
+  const lastEndIdx = skillRaw.lastIndexOf(STAGE_TABLE_END);
+  if (beginIdx === -1 || endIdx === -1) {
+    console.error(
+      `SKILL.md at ${skillPath} is missing stage-table markers. Expected:\n  ${STAGE_TABLE_BEGIN}\n  ${STAGE_TABLE_END}`
+    );
+    process.exit(1);
+  }
+  if (beginIdx !== lastBeginIdx || endIdx !== lastEndIdx) {
+    console.error(
+      `SKILL.md at ${skillPath} has duplicate stage-table markers. Expected exactly one BEGIN and one END.`
+    );
+    process.exit(1);
+  }
+  if (endIdx < beginIdx) {
+    console.error(
+      `SKILL.md at ${skillPath} has stage-table markers out of order (END before BEGIN).`
+    );
+    process.exit(1);
+  }
+
+  const currentRegion = skillRaw.substring(
+    beginIdx,
+    endIdx + STAGE_TABLE_END.length
+  );
+
+  if (currentRegion === expectedRegion) {
+    return; // exit 0 silent
+  }
+
+  console.error(
+    `SKILL.md stage-table region is out of date. Refresh it from \`bun ${harnessDir()}/tools/aidlc-utility.ts stage-table\`.`
   );
   process.exit(1);
 }
@@ -4273,9 +4388,12 @@ function main(): void {
     case "scope-table":
       handleScopeTable(projectDir, flags, rawArgs);
       break;
+    case "stage-table":
+      handleStageTable(projectDir, flags, rawArgs);
+      break;
     default:
       die(
-        `Usage: aidlc-utility <help|version|status|doctor|intent-birth|intent|space|space-create|codekb-path|detect|recompose|scope-change|config-change|set-status|detect-scope|resolve-env-scope|scope-table> [--project-dir <path>] [--scope <scope>] [--json]`
+        `Usage: aidlc-utility <help|version|status|doctor|intent-birth|intent|space|space-create|codekb-path|detect|recompose|scope-change|config-change|set-status|detect-scope|resolve-env-scope|scope-table|stage-table> [--project-dir <path>] [--scope <scope>] [--json]`
       );
   }
 }

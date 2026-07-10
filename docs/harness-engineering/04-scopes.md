@@ -77,7 +77,7 @@ Suppose your team wants a `hotfix` scope — leaner than `bugfix`, for the urgen
 
 2. **Tag the stages that should run under `hotfix`.** In each stage you want `EXECUTE` (under `core/aidlc-common/stages/<phase>/`), add `hotfix` to its frontmatter `scopes:` list. A stage you don't tag is `SKIP` for the scope. The 3 initialization stages must include it (they always run).
 
-3. **Recompile.** Run `bun .claude/tools/aidlc-graph.ts compile` to transpose the tags into `scope-grid.json`, then regenerate SKILL.md's compiled scope-table (`bun .claude/tools/aidlc-utility.ts scope-table`, paste between the `<!-- BEGIN: compiled ... -->` / `<!-- END: compiled ... -->` markers). Run `bun .claude/tools/aidlc-graph.ts compile --check` and `bun .claude/tools/aidlc-utility.ts scope-table --check` to confirm no drift (exit 0).
+3. **Recompile.** Run `bun .claude/tools/aidlc-graph.ts compile` to transpose the tags into `scope-grid.json`, then refresh SKILL.md's compiled scope-table from `bun .claude/tools/aidlc-utility.ts scope-table`. Run `bun .claude/tools/aidlc-graph.ts compile --check` and `bun .claude/tools/aidlc-utility.ts scope-table --check` to confirm no drift (exit 0).
 
 4. **Verify the scope resolves and is accepted.** Run `/aidlc --doctor`. Then confirm an init under the new scope produces a state file with the right `Scope:` line, and that it's accepted as an env default and as a mid-workflow `--scope` change.
 

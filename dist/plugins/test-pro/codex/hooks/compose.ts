@@ -40,6 +40,12 @@ const HARNESS_DIR = join(PROJECT_DIR, HARNESS_LEAF);
 const STAGES_DIR = join(HARNESS_DIR, "aidlc-common", "stages");
 const SKILLS_DIR = join(HARNESS_DIR, "skills");
 const PHASES = ["initialization", "ideation", "inception", "construction", "operation"];
+const SCOPE_TABLE_BEGIN =
+  "<!-- BEGIN: compiled scope grid via `bun aidlc-utility.ts scope-table` — do NOT hand-edit -->";
+const SCOPE_TABLE_END = "<!-- END: compiled scope grid -->";
+const STAGE_TABLE_BEGIN =
+  "<!-- BEGIN: compiled stage graph via `bun aidlc-utility.ts stage-table` - do NOT hand-edit -->";
+const STAGE_TABLE_END = "<!-- END: compiled stage graph -->";
 
 // The plugin's stable IDENTITY, computed once up front so every per-plugin
 // artifact (the drops file, the retry marker) is keyed the same way — including
@@ -117,6 +123,60 @@ async function flushDrops(): Promise<void> {
 
 function escapeRegExp(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function installedOrchestratorSkillPath(): string {
+  const harnessSkill = join(SKILLS_DIR, "aidlc", "SKILL.md");
+  if (existsSync(harnessSkill)) return harnessSkill;
+  const agentsSkill = join(PROJECT_DIR, ".agents", "skills", "aidlc", "SKILL.md");
+  if (existsSync(agentsSkill)) return agentsSkill;
+  return harnessSkill;
+}
+
+function refreshSkillGeneratedRegion(
+  verb: "scope-table" | "stage-table",
+  beginMarker: string,
+  endMarker: string,
+): void {
+  const skillMd = installedOrchestratorSkillPath();
+  if (!existsSync(skillMd)) {
+    recordDrop(`${verb} refresh skipped: ${relative(PROJECT_DIR, skillMd)} not present in this install`, "advisory");
+    return;
+  }
+
+  const before = readFileSync(skillMd, "utf-8").replace(/\r\n/g, "\n");
+  if (!before.includes(beginMarker)) {
+    recordDrop(`${verb} refresh skipped: SKILL.md missing BEGIN marker`, "advisory");
+    return;
+  }
+  const beginIdx = before.indexOf(beginMarker);
+  const endIdx = before.indexOf(endMarker, beginIdx);
+  if (endIdx === -1) {
+    recordDrop(`${verb} refresh failed: SKILL.md missing END marker after BEGIN marker`);
+    return;
+  }
+
+  const r = spawnSync(process.execPath, [join(HARNESS_DIR, "tools", "aidlc-utility.ts"), verb], {
+    cwd: PROJECT_DIR,
+    encoding: "utf-8",
+    env: { ...process.env, AIDLC_HARNESS_DIR: HARNESS_LEAF },
+  });
+  if (r.status !== 0) {
+    recordDrop(`aidlc-utility ${verb} failed: ${(r.stderr || r.stdout || "").slice(0, 400)}`);
+    return;
+  }
+
+  const region = (r.stdout || "").replace(/\r\n/g, "\n").replace(/\n$/, "");
+  if (!region.includes(beginMarker) || !region.includes(endMarker)) {
+    recordDrop(`aidlc-utility ${verb} emitted an invalid generated region`);
+    return;
+  }
+
+  const after =
+    before.slice(0, beginIdx) +
+    region +
+    before.slice(endIdx + endMarker.length);
+  if (after !== before) writeFileSync(skillMd, after);
 }
 
 // Does the INSTALLED engine accept a frontmatter key? Probes the installed
@@ -696,6 +756,8 @@ try {
       if (retryPending) {
         try { rmSync(retryMarker, { force: true }); } catch { /* best-effort */ }
       }
+      refreshSkillGeneratedRegion("stage-table", STAGE_TABLE_BEGIN, STAGE_TABLE_END);
+      refreshSkillGeneratedRegion("scope-table", SCOPE_TABLE_BEGIN, SCOPE_TABLE_END);
     }
   }
 

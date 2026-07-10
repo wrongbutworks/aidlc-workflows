@@ -69,12 +69,11 @@ The state file is created during Initialization or when a scope is provided to `
 
 ### State file corrupted
 
-The `validate-state.ts` hook checks for two required sections on every compaction: `## Stage Progress` and `## Current Status`. To manually repair:
+The `validate-state.ts` hook checks for two required sections on every compaction: `## Stage Progress` and `## Current Status`. To repair:
 
-1. Open the active intent's `aidlc-state.md` (under `aidlc/spaces/<space>/intents/<YYMMDD>-<label>/`)
-2. Verify these sections exist: Project Information, Scope Configuration, Workspace State, Stage Progress, Current Status, Session Resume Point
-3. Compare against the template at `.claude/knowledge/aidlc-shared/state-template.md`
-4. Restore missing sections from the template, filling in values from the `audit/` shard history
+1. Run `/aidlc --doctor` and address any reported state, graph, or hook issues
+2. If the generated Stage Progress rows are stale, re-run the engine path that owns state resync: start or resume the workflow with `/aidlc`, or change scope through `/aidlc --scope <scope>` so the compiled graph and scope grid are reapplied
+3. Use `.claude/knowledge/aidlc-shared/state-template.md` only as the section and field contract; do not restore stage rows by hand from the template
 
 ---
 

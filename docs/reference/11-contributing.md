@@ -81,6 +81,7 @@ For handlers that require no LLM reasoning (print text, read/format files, check
 2. Dispatch from SKILL.md with a single Bash call: `bun .claude/tools/aidlc-utility.ts <subcommand>`
 3. No task tracking needed -- the script runs in under a second
 4. Handle audit logging inside the script via `appendAuditEntry` from `aidlc-audit.ts` (never hand-write `**Event**:` markdown blocks)
+5. Add the verb to the `aidlc-utility` usage string. If it renders a generated SKILL.md region, also document the corresponding `--check` guard in this chapter.
 
 The `--help`, `--version`, `--status`, and `--doctor` handlers are reference implementations.
 
@@ -128,7 +129,7 @@ A scope is authored as a file (its identity) plus a per-stage membership tag. Th
 
 2. **Tag the member stages** — in each stage that should run under `hotfix` (under `core/aidlc-common/stages/<phase>/`), add `hotfix` to its frontmatter `scopes:` list. A stage you don't tag is `SKIP` for the scope. The 3 initialization stages (`workspace-scaffold`, `workspace-detection`, `state-init`) must include it — they always run.
 
-3. **Recompile + regenerate the scope-table** — `bun .claude/tools/aidlc-graph.ts compile` transposes the `scopes:` tags into `tools/data/scope-grid.json`. Then `bun .claude/tools/aidlc-utility.ts scope-table` prints the canonical Markdown table; paste it between the `<!-- BEGIN: compiled ... -->` / `<!-- END: compiled ... -->` markers in `harness/claude/skills/aidlc/SKILL.md`. Run `bun .claude/tools/aidlc-graph.ts compile --check` and `bun .claude/tools/aidlc-utility.ts scope-table --check` to confirm exit 0 (no drift).
+3. **Recompile + regenerate the scope-table** — `bun .claude/tools/aidlc-graph.ts compile` transposes the `scopes:` tags into `tools/data/scope-grid.json`. Then `bun .claude/tools/aidlc-utility.ts scope-table` prints the canonical Markdown region for SKILL.md's compiled scope table. Keep the region between the `<!-- BEGIN: compiled ... -->` / `<!-- END: compiled ... -->` markers generated, then run `bun .claude/tools/aidlc-graph.ts compile --check` and `bun .claude/tools/aidlc-utility.ts scope-table --check` to confirm exit 0 (no drift).
 
 4. **Verify the scope resolves** — `bun core/tools/aidlc-utility.ts init --scope hotfix --project-dir /tmp/scope-smoke` should succeed and produce a state file with `Scope: hotfix`.
 
@@ -164,7 +165,7 @@ A stage is authored as a Markdown file with YAML frontmatter under `core/aidlc-c
 
 1. **Write the stage file** — create `core/aidlc-common/stages/<phase>/<slug>.md`. Frontmatter declares `slug`, `phase`, `execution`/`condition`, `lead_agent` and any `support_agents` (by agent slug), `mode` (`inline` or `subagent`), `consumes` / `produces` (artifact vocabulary names), `optional_produces` for artifacts the stage writes only conditionally per unit (exempt from per-unit coverage), `requires_stage` (ordering edges), the `scopes:` membership list, any `sensors:` to bind, `for_each` if it iterates per Unit, and (on a per-unit stage) an optional `produces_kinds` map to prune produces artifacts to each Unit's kind. The body carries the stage's three compartments. See [Stage Definition](15-stage-definition.md) for the full field contract.
 
-2. **Recompile the graph** — `bun .claude/tools/aidlc-graph.ts compile` reads the new frontmatter into `tools/data/stage-graph.json` and transposes the `scopes:` tags into `tools/data/scope-grid.json`. Run `bun .claude/tools/aidlc-graph.ts compile --check` to confirm exit 0 (no drift). The stage is runnable immediately via `bun .claude/tools/aidlc-orchestrate.ts next --stage <slug> --single`.
+2. **Recompile the graph** — `bun .claude/tools/aidlc-graph.ts compile` reads the new frontmatter into `tools/data/stage-graph.json` and transposes the `scopes:` tags into `tools/data/scope-grid.json`. Run `bun .claude/tools/aidlc-graph.ts compile --check` to confirm exit 0 (no drift). Then refresh the generated SKILL.md mirrors with `bun .claude/tools/aidlc-utility.ts stage-table` and `bun .claude/tools/aidlc-utility.ts scope-table`, and confirm `bun .claude/tools/aidlc-utility.ts stage-table --check` plus `scope-table --check` both exit 0. The stage is runnable immediately via `bun .claude/tools/aidlc-orchestrate.ts next --stage <slug> --single`.
 
 3. **Regenerate the runners** — `bun .claude/tools/aidlc-runner-gen.ts write` emits a `/aidlc-<slug>` runner skill per runnable compiled stage, so your new stage gets its typeable command with no hand-authoring. Run `bun .claude/tools/aidlc-runner-gen.ts check` to confirm the on-disk runner set matches the compiled stage set (the drift guard; the bootstrap initialization stages are excluded by design).
 
@@ -177,6 +178,7 @@ A stage is authored as a Markdown file with YAML frontmatter under `core/aidlc-c
 ### What validates automatically
 
 - **Graph placement.** Once you `compile`, the stage's edges (`requires_stage`, `consumes`, `produces`) are resolved and ordered; `compile --check` fails the build if the on-disk `stage-graph.json` drifts from the frontmatter.
+- **Generated stage table.** SKILL.md's Stage Graph table is rendered from compiled `stage-graph.json`; `aidlc-utility stage-table --check` fails if the generated region drifts (t32).
 - **Schema + references.** `aidlc-graph.ts compile` validates every stage's frontmatter via `aidlc-stage-schema.ts`, and `/aidlc --doctor` re-runs `validateStageFrontmatter` plus a "Graph references" check that every `lead_agent` / `support_agents` / `consumes` slug resolves.
 - **Runner parity.** `aidlc-runner-gen.ts check` (and `t129`) fail if a compiled stage has no runner, or a runner exists for a stage that is gone.
 

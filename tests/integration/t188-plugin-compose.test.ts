@@ -29,6 +29,9 @@ const TIMEOUT_MS = 60_000;
 
 const PLUGIN = "test-pro";
 const CLAUDE_DIST = join(REPO_ROOT, "dist", "claude", ".claude");
+const STAGE_TABLE_BEGIN =
+  "<!-- BEGIN: compiled stage graph via `bun aidlc-utility.ts stage-table` - do NOT hand-edit -->";
+const STAGE_TABLE_END = "<!-- END: compiled stage graph -->";
 // The COMMITTED projection — only existsSync-probed (never mutated) by the
 // "packager emits" assertions. The compose run below uses a FRESHLY BUILT copy
 // under tmp (see beforeAll) so this test never regenerates the committed dist.
@@ -145,6 +148,17 @@ describe("t188 plugin compose — emit + compose the contribution seam", () => {
     expect(slugs).toContain("test-pro-integration");
     expect(slugs).toContain("test-pro-full-suite");
     expect(graph(project).length).toBe(34); // 32 core + 2 test-pro
+  });
+
+  test("compose refreshes SKILL.md Stage Graph with plugin stages", () => {
+    const skill = readFileSync(join(project, ".claude", "skills", "aidlc", "SKILL.md"), "utf-8");
+    const begin = skill.indexOf(STAGE_TABLE_BEGIN);
+    const end = skill.indexOf(STAGE_TABLE_END, begin);
+    expect(begin).toBeGreaterThanOrEqual(0);
+    expect(end).toBeGreaterThan(begin);
+    const region = skill.slice(begin, end + STAGE_TABLE_END.length);
+    expect(region).toContain("| test-pro-integration |");
+    expect(region).toContain("| test-pro-full-suite |");
   });
 
   test("new plugin scopes, agents, and knowledge compose into the harness tree", () => {

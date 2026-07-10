@@ -6,8 +6,8 @@
 // The .sh carried NO `# covers:` header (it claims no enumerated tool unit);
 // it is a pure structural meta-test that the shipped test FIXTURES
 // (tests/fixtures/state-mid-ideation.md, tests/fixtures/state-initialization-done.md)
-// carry the section headings, phase headings, and bold-field format that the
-// REAL state template defines. The honest covers id is therefore the structural
+// carry the section headings, phase headings, and bold-field format expected by
+// the REAL state template contract. The honest covers id is therefore the structural
 // INVARIANT under test, declared free-form like t125's invariant: ids
 // (tests/unit/t125.none.test.ts:1) — invariant ids are descriptive claims, not
 // joined to an enumerated subcommand/function unit.
@@ -37,7 +37,8 @@
 //           (a sub-expect per heading; each heading ALSO pinned in the template)
 //   .sh 9-13  (mid-ideation: 5 `### <PHASE> PHASE` headings)
 //        -> "mid-ideation carries all 5 template phase headings"
-//           (a sub-expect per phase; each ALSO pinned in the template)
+//           (a sub-expect per phase; the template contract carries the generic
+//            phase-heading emission shape)
 //   .sh 14    (**Lifecycle Phase**: present)        -> field block, sub-expect
 //   .sh 15    (**Current Stage**: present)          -> field block, sub-expect
 //   .sh 16    (**State Version**: 7)                -> field block, sub-expect (value-pinned)
@@ -103,8 +104,8 @@ describe("t12 state-fixture structural meta-test (migrated from t12-state-fixtur
   test("mid-ideation carries all 5 template phase headings [.sh 9-13]", () => {
     for (const h of PHASE_HEADINGS) {
       expect(MID.includes(h)).toBe(true);
-      expect(TEMPLATE.includes(h)).toBe(true);
     }
+    expect(TEMPLATE.includes("### [PHASE] PHASE")).toBe(true);
   });
 
   test("mid-ideation carries the template bold-field format [.sh 14-19]", () => {

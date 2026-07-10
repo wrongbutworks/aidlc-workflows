@@ -30,9 +30,9 @@
 // is: every heading / marker / phase / stage the .sh greps in the fixture is
 // ALSO asserted present in the shipped state-template.md, so the meta-test's
 // stated subject — "this jumped fixture matches real template structure" — is
-// enforced, not merely asserted against the fixture in isolation. If the
-// template renamed a heading or dropped a checkbox marker the fixture would
-// silently drift; the cross-check catches it.
+// enforced, not merely asserted against the fixture in isolation. Concrete stage
+// slugs are checked against the compiled graph, because the template is now the
+// state contract rather than a stage enumeration.
 //
 // STRONGER counts: the .sh asserted `S_COUNT > 0` (assert_gt). The twin pins
 // the EXACT count (17) — equal-or-stronger: it still proves "> 0" and also
@@ -68,10 +68,13 @@ const TEMPLATE = readFileSync(
   join(AIDLC_SRC, "knowledge", "aidlc-shared", "state-template.md"),
   "utf-8",
 );
+const GRAPH = JSON.parse(
+  readFileSync(join(AIDLC_SRC, "tools", "data", "stage-graph.json"), "utf-8"),
+) as Array<{ slug: string; phase: string }>;
 
-// The three initialization stages the .sh loops over (t42.sh:27), asserting
-// each is [x] completed (a --phase/--stage jump must NOT skip a finished init).
-const INIT_STAGES = ["workspace-scaffold", "workspace-detection", "state-init"];
+// Initialization stages come from the compiled graph, asserting each is [x]
+// completed (a --phase/--stage jump must NOT skip a finished init).
+const INIT_STAGES = GRAPH.filter((stage) => stage.phase === "initialization").map((stage) => stage.slug);
 
 describe("t42 state-jumped fixture structural meta-test (migrated from t42-state-jumped-fixture.sh, plan 12)", () => {
   test("fixture file exists and is non-empty [.sh 1]", () => {
@@ -138,9 +141,9 @@ describe("t42 state-jumped fixture structural meta-test (migrated from t42-state
     // grep 'code-generation'.
     expect(JUMPED.includes("code-generation")).toBe(true);
     // STRONGER: it is the declared Current Stage under ## Current Status, and a
-    // template-listed stage (state-template.md:75).
+    // compiled-graph stage.
     expect(JUMPED.includes("**Current Stage**: code-generation")).toBe(true);
-    expect(TEMPLATE.includes("code-generation")).toBe(true);
+    expect(GRAPH.some((stage) => stage.slug === "code-generation")).toBe(true);
   });
 
   test("has > 0 [S] skipped stages (exact: 17) [.sh 9]", () => {
@@ -162,9 +165,9 @@ describe("t42 state-jumped fixture structural meta-test (migrated from t42-state
       // grep "\[x\] <stage>".
       expect(JUMPED.includes(`[x] ${stage}`)).toBe(true);
       // STRONGER: the same stage must NOT also appear as skipped, and the
-      // template lists it as an initialization stage (state-template.md:46-48).
+      // compiled graph lists it as an initialization stage.
       expect(JUMPED.includes(`[S] ${stage}`)).toBe(false);
-      expect(TEMPLATE.includes(stage)).toBe(true);
+      expect(GRAPH.some((entry) => entry.slug === stage && entry.phase === "initialization")).toBe(true);
     });
   }
 });

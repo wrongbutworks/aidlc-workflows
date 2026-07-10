@@ -55,7 +55,7 @@ Ships with the framework. Contains shared principles and per-agent methodology r
 │   ├── audit-format.md             # 68-event audit taxonomy
 │   ├── brownfield.md               # Brownfield safeguards and reverse-engineering guidance
 │   ├── knowledge-readme-template.md # Optional README template a team can copy into Tier 2
-│   ├── state-template.md           # State file schema
+│   ├── state-template.md           # State file contract
 │   └── verification.md             # Phase boundary verification rules
 ├── aidlc-architect-agent/                 # Loaded when aidlc-architect-agent is active
 ├── aidlc-developer-agent/                 # Loaded when aidlc-developer-agent is active

@@ -40,8 +40,9 @@ MANDATORY: Follow stage-protocol.md for state tracking and audit logging.
 
 ### Step 2: Create Full State File
 
-Read the state template from `.claude/knowledge/aidlc-shared/state-template.md`.
-Overwrite `<record>/aidlc-state.md` with the full populated version:
+Read the state contract from `.claude/knowledge/aidlc-shared/state-template.md`.
+Overwrite `<record>/aidlc-state.md` with the full populated version generated
+from the compiled stage graph and scope grid:
 - Project description (from orchestrator's $ARGUMENTS or `<record>/audit/<host>-<clone>.md`)
 - Project type (greenfield/brownfield from workspace-detection)
 - Workspace state (languages, frameworks, build system from workspace-detection)
@@ -49,17 +50,12 @@ Overwrite `<record>/aidlc-state.md` with the full populated version:
 - Scope configuration (stages to execute/skip per scope routing)
 - Full stage progress checkboxes (all stages, with INITIALIZATION stages marked [x] for workspace-scaffold, workspace-detection)
 - Mark state-init as `[-]` in progress
-- Total Stages: count EXECUTE stages only (not SKIP). Authoritative counts come from the compiled scope grid (`.claude/tools/data/scope-grid.json`, transposed from each stage's `scopes:` frontmatter; run `bun .claude/tools/aidlc-utility.ts scope-table` for the live table). Today's values:
-  | Scope | EXECUTE / Total |
-  |-------|-----------------|
-  | enterprise / feature | 31 / 31 |
-  | mvp | 21 / 31 |
-  | poc | 8 / 31 |
-  | bugfix | 7 / 31 |
-  | refactor | 8 / 31 |
-  | infra | 12 / 31 |
-  | security-patch | 9 / 31 |
-  | workshop | 24 / 31 |
+- Total Stages: count EXECUTE stages only (not SKIP). Authoritative counts come
+  from the compiled scope grid (`.claude/tools/data/scope-grid.json`),
+  transposed from each stage's `scopes:` frontmatter. Run
+  `bun .claude/tools/aidlc-utility.ts scope-table` for the live scope
+  counts and `bun .claude/tools/aidlc-utility.ts stage-table` for the
+  live compiled stage list.
 - Completed: set to number of completed INITIALIZATION stages (typically 3)
 - In Progress: set to first post-initialization stage name
 - Active Agent: set to lead agent of the first post-initialization stage (from Stage Graph)

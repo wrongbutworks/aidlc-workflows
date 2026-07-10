@@ -1,99 +1,67 @@
 # AI-DLC State Tracking
 
+This document defines the `aidlc-state.md` section and field contract. The
+engine writes the concrete state file and enumerates stages from the compiled
+stage graph plus scope grid; this template must not hand-list shipped stages.
+
+Authoritative generated views:
+- Stage graph: `bun .codex/tools/aidlc-utility.ts stage-table`
+- Scope grid: `bun .codex/tools/aidlc-utility.ts scope-table`
+
 ## Project Information
-- **Project**: [Project description]
+- **Project**: [project description]
 - **Project Type**: [Greenfield/Brownfield]
-- **Scope**: [enterprise/feature/mvp/poc/bugfix/refactor/infra/security-patch/workshop]
-- **Start Date**: [ISO timestamp]
+- **Scope**: [scope slug from compiled scope grid]
+- **Start Date**: [ISO 8601 timestamp]
 - **State Version**: 7
-- **Active Agent**: [current lead agent name]
+- **Active Agent**: [current lead agent slug]
 - **Worktree Path**: [empty when not in a worktree]
-- **Bolt Refs**: [empty list]
+- **Bolt Refs**: [empty list or comma-separated bolt slugs]
 - **Practices Affirmed Timestamp**: [ISO 8601 timestamp on affirmation]
 
 ## Scope Configuration
-- **Stages to Execute**: [List of stage numbers included in scope]
-- **Stages to Skip**: [List with reasons]
+- **Stages to Execute**: [comma-separated stage numbers included in scope]
+- **Stages to Skip**: [comma-separated stage numbers with reasons, or none]
 - **Depth**: [Minimal/Standard/Comprehensive]
+- **Test Strategy**: [Minimal/Standard/Comprehensive]
 
 ## Workspace State
-- **Project Root**: [path]
+- **Project Root**: [absolute workspace path]
 - **Languages**: [detected languages]
 - **Frameworks**: [detected frameworks]
 - **Build System**: [detected build system]
 
 ## Execution Plan Summary
-- **Total Stages**: [Number]
-- **Completed**: [Number]
-- **In Progress**: [Stage name]
+- **Total Stages**: [count of EXECUTE stages]
+- **Completed**: [count of completed EXECUTE stages]
+- **In Progress**: [current stage slug]
 
 ## Runtime State
-- **Revision Count**: 0
+- **Revision Count**: [integer]
 
 ## Phase Progress
 <!-- Status values: Pending, Active, Verified, Skipped -->
 
-- **Initialization**: Pending
-- **Ideation**: Pending
-- **Inception**: Pending
-- **Construction**: Pending
-- **Operation**: Pending
+- **[Phase]**: [Pending/Active/Verified/Skipped]
 
 ## Stage Progress
-<!-- Checkbox states: [ ] not started, [-] in progress, [?] awaiting approval (gate open), [R] revising (user rejected gate), [x] completed, [S] skipped (scope-excluded at init, cut via `skip`, or bypassed via --stage/--phase jump) -->
+<!-- Checkbox states: [ ] pending, [-] in-progress, [?] awaiting approval, [R] revising, [x] completed, [S] skipped -->
 
-### INITIALIZATION PHASE
-- [ ] workspace-scaffold — EXECUTE
-- [ ] workspace-detection — EXECUTE
-- [ ] state-init — EXECUTE
+The engine emits one phase heading per compiled phase, then one checkbox row per
+compiled stage in that phase:
 
-### IDEATION PHASE
-- [ ] intent-capture — [EXECUTE/SKIP: reason]
-- [ ] market-research — [EXECUTE/SKIP: reason]
-- [ ] feasibility — [EXECUTE/SKIP: reason]
-- [ ] scope-definition — [EXECUTE/SKIP: reason]
-- [ ] team-formation — [EXECUTE/SKIP: reason]
-- [ ] rough-mockups — [EXECUTE/SKIP: reason]
-- [ ] approval-handoff — [EXECUTE/SKIP: reason]
-
-### INCEPTION PHASE
-- [ ] reverse-engineering — [EXECUTE/SKIP: reason]
-- [ ] practices-discovery — [EXECUTE/SKIP: reason]
-- [ ] requirements-analysis
-- [ ] user-stories — [EXECUTE/SKIP: reason]
-- [ ] refined-mockups — [EXECUTE/SKIP: reason]
-- [ ] application-design — [EXECUTE/SKIP: reason]
-- [ ] units-generation — [EXECUTE/SKIP: reason]
-- [ ] delivery-planning
-
-### CONSTRUCTION PHASE
-Per unit: [unit-name]
-- [ ] functional-design — [EXECUTE/SKIP: reason]
-- [ ] nfr-requirements — [EXECUTE/SKIP: reason]
-- [ ] nfr-design — [EXECUTE/SKIP: reason]
-- [ ] infrastructure-design — [EXECUTE/SKIP: reason]
-- [ ] code-generation
-- [ ] build-and-test
-- [ ] ci-pipeline — [EXECUTE/SKIP: reason]
-
-### OPERATION PHASE
-- [ ] deployment-pipeline — [EXECUTE/SKIP: reason]
-- [ ] environment-provisioning — [EXECUTE/SKIP: reason]
-- [ ] deployment-execution — [EXECUTE/SKIP: reason]
-- [ ] observability-setup — [EXECUTE/SKIP: reason]
-- [ ] incident-response — [EXECUTE/SKIP: reason]
-- [ ] performance-validation — [EXECUTE/SKIP: reason]
-- [ ] feedback-optimization — [EXECUTE/SKIP: reason]
+### [PHASE] PHASE
+- [ ] stage-slug — [EXECUTE/SKIP: reason]
 
 ## Current Status
-- **Lifecycle Phase**: [INITIALIZATION/IDEATION/INCEPTION/CONSTRUCTION/OPERATION]
-- **Current Stage**: [stage name]
-- **Next Stage**: [next stage name]
+- **Lifecycle Phase**: [READY/INITIALIZATION/IDEATION/INCEPTION/CONSTRUCTION/OPERATION]
+- **Current Stage**: [stage slug or status text]
+- **Next Stage**: [next stage slug or none]
 - **Status**: [Running/Completed]
 - **Construction Autonomy Mode**: [unset/autonomous/gated]
-- **Last Updated**: [ISO timestamp]
+- **Last Updated**: [ISO 8601 timestamp]
 
 ## Session Resume Point
-- **Last Completed Stage**: [stage name]
+- **Last Completed Stage**: [stage slug]
 - **Next Action**: [what to do next]
-- **Pending Artifacts**: [any incomplete artifacts]
+- **Pending Artifacts**: [any incomplete artifacts or none]

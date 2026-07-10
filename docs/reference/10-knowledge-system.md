@@ -22,7 +22,7 @@ AI-DLC uses a two-tier knowledge system that separates framework methodology fro
 |   +-- brownfield.md              # Brownfield safeguards
 |   +-- audit-format.md            # 68-event audit taxonomy
 |   +-- knowledge-readme-template.md  # Optional README template a team can copy into Tier 2
-|   +-- state-template.md          # State file template
+|   +-- state-template.md          # State file contract
 +-- aidlc-product-agent/
 |   +-- requirements-guide.md
 |   +-- product-guide.md
@@ -137,7 +137,7 @@ sequenceDiagram
 
 ### State Template
 
-The `aidlc-state.md` file is created from `.claude/knowledge/aidlc-shared/state-template.md`. The template defines the sections: Project Information, Scope Configuration, Workspace State, Execution Plan Summary, Runtime State, Phase Progress, Stage Progress (checkboxes), Current Status, and Session Resume Point.
+The engine generates `aidlc-state.md` according to the contract in `.claude/knowledge/aidlc-shared/state-template.md`. The template defines the required sections and fields; concrete Stage Progress rows are emitted from the compiled stage graph and scope grid, not hand-enumerated in the template.
 
 ---
 

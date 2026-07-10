@@ -119,7 +119,7 @@ All three stages run inside a single deterministic `bun .claude/tools/aidlc-util
 | Mode | Auto-proceed (no approval gate) |
 
 ### Steps
-1. Read state template
+1. Read state contract
 2. Apply scope mapping + depth + test strategy
 3. For greenfield, mark `reverse-engineering` SKIP
 4. Write full `<record>/aidlc-state.md` with the first post-init stage set to `[-]`
@@ -129,7 +129,8 @@ All three stages run inside a single deterministic `bun .claude/tools/aidlc-util
 - Workspace classification from workspace-detection (same tool call)
 - Scope configuration (from `--scope` flag or `poc` default)
 - Depth / test-strategy overrides if passed
-- State template from `.claude/knowledge/aidlc-shared/state-template.md`
+- State contract from `.claude/knowledge/aidlc-shared/state-template.md`
+- Compiled `tools/data/stage-graph.json` and `tools/data/scope-grid.json`
 
 ### Outputs
 - `<record>/aidlc-state.md` (fully populated)
