@@ -59,7 +59,7 @@ import {
 } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { errorMessage, harnessDir } from "./aidlc-lib.ts";
+import { errorMessage, harnessDir, isPluginEnabled } from "./aidlc-lib.ts";
 import { type GraphStage, loadGraph } from "./aidlc-graph.ts";
 
 // Resolve the skills/ dir off THIS module's location (tools/ → ../skills/) so the
@@ -287,6 +287,7 @@ conductor runs the same forwarding loop as \`/aidlc\`.
 // for all 32 stages. Returns the slugs written.
 function handleWrite(): string[] {
   const slugs = stageSlugs();
+  const compiledSet = new Set(slugs);
   for (const node of runnableStages()) {
     const dir = join(SKILLS_DIR, runnerDirName(node));
     if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
@@ -300,12 +301,10 @@ function handleWrite(): string[] {
   const composeDir = join(SKILLS_DIR, COMPOSE_RUNNER_DIR);
   if (!existsSync(composeDir)) mkdirSync(composeDir, { recursive: true });
   writeFileSync(join(composeDir, "SKILL.md"), renderComposeRunner(), "utf-8");
-  // Prune stale per-init-stage runner dirs from an earlier all-32 generation.
-  for (const node of loadGraph()) {
-    if (isRunnableStage(node)) continue;
-    const staleDir = join(SKILLS_DIR, runnerDirName(node));
-    const staleSkill = join(staleDir, "SKILL.md");
-    if (isRunnerSkill(staleSkill)) rmSync(staleDir, { recursive: true, force: true });
+  // Prune stale stage-runner dirs: old per-init runners and runners for stages
+  // now absent from the filtered graph because their plugin is disabled.
+  for (const entry of onDiskRunnerEntries()) {
+    if (!compiledSet.has(entry.slug)) rmSync(entry.dir, { recursive: true, force: true });
   }
   return slugs;
 }
@@ -338,12 +337,17 @@ function runnerSlugFromSkill(skillMdPath: string): string | null {
 // not compiled) divergences. Slugs are parsed from the command body because
 // plugin-owned runner dirs intentionally do not have an `aidlc-` prefix.
 function onDiskRunnerSlugs(): string[] {
+  return onDiskRunnerEntries().map((e) => e.slug);
+}
+
+function onDiskRunnerEntries(): Array<{ slug: string; dir: string }> {
   if (!existsSync(SKILLS_DIR)) return [];
-  const found: string[] = [];
+  const found: Array<{ slug: string; dir: string }> = [];
   for (const entry of readdirSync(SKILLS_DIR, { withFileTypes: true })) {
     if (!entry.isDirectory()) continue;
-    const slug = runnerSlugFromSkill(join(SKILLS_DIR, entry.name, "SKILL.md"));
-    if (slug) found.push(slug);
+    const dir = join(SKILLS_DIR, entry.name);
+    const slug = runnerSlugFromSkill(join(dir, "SKILL.md"));
+    if (slug) found.push({ slug, dir });
   }
   return found;
 }
@@ -454,6 +458,7 @@ export function discoverScopes(): Record<string, ScopeFront> {
   }
   for (const f of files) {
     const front = readScopeFront(join(dir, f));
+    if (!isPluginEnabled(front.plugin ?? "aidlc")) continue;
     out[front.name] = front;
   }
   return out;
@@ -549,8 +554,9 @@ function handleScopes(rest: string[]): void {
   const batch = resolveBatch(all, discovered);
 
   if (batch.length === 0) {
-    console.error("No scope files found — nothing to generate.");
-    process.exit(1);
+    if (!check) pruneScopeRunners(skillsDir, new Set());
+    console.log("No enabled scope files with runner:true — pruned stale scope-runners; nothing to generate.");
+    return;
   }
 
   if (check) {
@@ -581,7 +587,26 @@ function handleScopes(rest: string[]): void {
     writeFileSync(path, renderRunner(scope, discovered[scope].description), "utf-8");
     console.log(`wrote ${path}`);
   }
+  pruneScopeRunners(skillsDir, new Set(batch));
   console.log(`Generated ${batch.length} scope-runner(s): ${batch.join(", ")}`);
+}
+
+function scopeRunnerSlugFromSkill(skillMdPath: string): string | null {
+  if (!existsSync(skillMdPath)) return null;
+  const body = readFileSync(skillMdPath, "utf-8");
+  if (!body.includes("aidlc-orchestrate.ts next --scope")) return null;
+  const m = body.match(/aidlc-orchestrate\.ts\s+next\s+--scope\s+([a-z][a-z0-9-]*)\b/);
+  return m?.[1] ?? null;
+}
+
+function pruneScopeRunners(skillsDir: string, keep: ReadonlySet<string>): void {
+  if (!existsSync(skillsDir)) return;
+  for (const entry of readdirSync(skillsDir, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+    const dir = join(skillsDir, entry.name);
+    const slug = scopeRunnerSlugFromSkill(join(dir, "SKILL.md"));
+    if (slug && !keep.has(slug)) rmSync(dir, { recursive: true, force: true });
+  }
 }
 
 // =========================================================================

@@ -110,6 +110,7 @@ import {
   resolveProjectDir,
   runtimeGraphPath,
   scopeCostSummary,
+  selectionAwareDefaultScope,
   type StageEntry,
   stateFilePath,
   unitDependencyPath,
@@ -542,7 +543,7 @@ function intentPickPromptIfRecordsExist(
 function resolveScope(
   stateContent: string | null,
   flags: ParsedFlags,
-): { scope: string; source: "state" | "flag" | "env" | "default" } {
+): { scope: string; source: "state" | "flag" | "env" | "default"; error?: string } {
   const stateScope = stateContent ? getField(stateContent, "Scope") : null;
   if (stateScope && stateScope.length > 0) {
     return { scope: stateScope, source: "state" };
@@ -554,7 +555,8 @@ function resolveScope(
   if (envScope && envScope.length > 0) {
     return { scope: envScope, source: "env" };
   }
-  return { scope: DEFAULT_SCOPE, source: "default" };
+  const fallback = selectionAwareDefaultScope(DEFAULT_SCOPE);
+  return { scope: fallback.scope, source: "default", error: fallback.error };
 }
 
 // Derive the memory diary path for a stage (SKILL.md: every stage keeps a
@@ -1452,7 +1454,7 @@ function handleNext(args: string[], projectDir: string | undefined): void {
   // scope-confirm `ask` first. No `--init`/`--force` flag reaches the engine.)
 
   // Resolve scope by the precedence ladder before any graph lookup.
-  const { scope, source } = resolveScope(stateContent, flags);
+  const { scope, source, error: scopeResolutionError } = resolveScope(stateContent, flags);
 
   // Branch 3b — UNCONDITIONAL --scope validation. An explicit `--scope` flag is
   // validated even when state supplies a valid scope that wins the precedence
@@ -1485,6 +1487,11 @@ function handleNext(args: string[], projectDir: string | undefined): void {
       emit(errorDirective(toolErrorMessage(run)));
       return;
     }
+  }
+
+  if (source === "default" && scopeResolutionError) {
+    emit(errorDirective(scopeResolutionError));
+    return;
   }
 
   // An unresolvable (unknown) scope is a hard error — the engine cannot derive
@@ -1732,9 +1739,10 @@ function handleNext(args: string[], projectDir: string | undefined): void {
     const bf = scopeCostSummary("bugfix");
     const poc = scopeCostSummary("poc");
     const feat = scopeCostSummary("feature");
+    const fallbackExamples = [...validScopes()].slice(0, 3).join(", ") || "an explicit scope";
     const examples = bf && poc && feat
       ? `bugfix = ${bf.execute} of ${bf.total} stages, poc = ${poc.execute}, feature = all ${feat.execute}`
-      : "bugfix, feature, poc";
+      : fallbackExamples;
     emit(askDirective(
       `No stock scope clearly fits: "${flags.intent}". ` +
         "I can compose a tailored plan for this task (recommended: reply \"compose\"), " +

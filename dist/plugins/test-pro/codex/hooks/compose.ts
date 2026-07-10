@@ -47,6 +47,44 @@ const STAGE_TABLE_BEGIN =
   "<!-- BEGIN: compiled stage graph via `bun aidlc-utility.ts stage-table` - do NOT hand-edit -->";
 const STAGE_TABLE_END = "<!-- END: compiled stage graph -->";
 
+function pluginNameFromRoot(): string {
+  if (!PLUGIN_ROOT) return "plugin";
+  const fromContent = firstPluginFieldInPlugin();
+  if (fromContent) return fromContent;
+  for (const md of [".claude-plugin", ".codex-plugin", ".kiro-plugin"]) {
+    try {
+      const m = JSON.parse(readFileSync(join(PLUGIN_ROOT, md, "plugin.json"), "utf-8"));
+      if (typeof m?.name === "string" && m.name) return m.name;
+    } catch { /* try next / fall through */ }
+  }
+  const parts = PLUGIN_ROOT.replace(/\\/g, "/").replace(/\/+$/, "").split("/");
+  return parts[parts.length - 2] || parts[parts.length - 1] || "plugin";
+}
+
+function firstPluginFieldInPlugin(): string | null {
+  const roots = ["stages", "scopes", "contributions"];
+  const visit = (dir: string): string | null => {
+    if (!existsSync(dir)) return null;
+    for (const entry of readdirSync(dir).sort()) {
+      const path = join(dir, entry);
+      if (statSync(path).isDirectory()) {
+        const nested = visit(path);
+        if (nested) return nested;
+        continue;
+      }
+      if (!entry.endsWith(".md")) continue;
+      const m = readFileSync(path, "utf-8").match(/^plugin:\s*([a-z][a-z0-9-]*)\s*$/m);
+      if (m) return m[1];
+    }
+    return null;
+  };
+  for (const root of roots) {
+    const found = visit(join(PLUGIN_ROOT, root));
+    if (found) return found;
+  }
+  return null;
+}
+
 // The plugin's stable IDENTITY, computed once up front so every per-plugin
 // artifact (the drops file, the retry marker) is keyed the same way — including
 // on the early-exit guards, which flush drops before the main body runs. NOT the
@@ -54,17 +92,8 @@ const STAGE_TABLE_END = "<!-- END: compiled stage graph -->";
 // its basename is the harness leaf (claude/kiro), shared by every plugin — keying
 // on it would let two plugins on one harness clobber each other's drops/retry
 // files. Prefer the manifest `name`; fall back to the parent-dir <name> segment.
-const PLUGIN_KEY = (() => {
-  if (!PLUGIN_ROOT) return "plugin";
-  for (const md of [".claude-plugin", ".codex-plugin", ".kiro-plugin"]) {
-    try {
-      const m = JSON.parse(readFileSync(join(PLUGIN_ROOT, md, "plugin.json"), "utf-8"));
-      if (typeof m?.name === "string" && m.name) return m.name.replace(/[^\w.-]/g, "_");
-    } catch { /* try next / fall through */ }
-  }
-  const parts = PLUGIN_ROOT.replace(/\\/g, "/").replace(/\/+$/, "").split("/");
-  return (parts[parts.length - 2] || parts[parts.length - 1] || "plugin").replace(/[^\w.-]/g, "_");
-})();
+const PLUGIN_NAME = pluginNameFromRoot();
+const PLUGIN_KEY = PLUGIN_NAME.replace(/[^\w.-]/g, "_");
 
 // Resolve the hooks-health dir from the INSTALLED tree so compose drops land
 // exactly where core hooks write theirs (hooksHealthDir under docsRoot) and where
@@ -131,6 +160,31 @@ function installedOrchestratorSkillPath(): string {
   const agentsSkill = join(PROJECT_DIR, ".agents", "skills", "aidlc", "SKILL.md");
   if (existsSync(agentsSkill)) return agentsSkill;
   return harnessSkill;
+}
+
+function selectedPlugins(): Set<string> | null {
+  try {
+    const raw = readFileSync(join(HARNESS_DIR, "tools", "data", "harness.json"), "utf-8");
+    const parsed = JSON.parse(raw) as { plugins?: unknown };
+    if (!Object.prototype.hasOwnProperty.call(parsed, "plugins")) return null;
+    if (!Array.isArray(parsed.plugins)) return null;
+    const names = parsed.plugins.filter((v): v is string => typeof v === "string" && v.trim().length > 0);
+    return new Set(names.map((s) => s.trim()));
+  } catch {
+    return null;
+  }
+}
+
+function pluginEnabledBySelection(): boolean {
+  const selected = selectedPlugins();
+  return selected === null || selected.has(PLUGIN_NAME);
+}
+
+function selectCommandForPlugin(): string {
+  const selected = selectedPlugins();
+  const names = new Set<string>(selected ?? ["aidlc"]);
+  names.add(PLUGIN_NAME);
+  return `bun ${HARNESS_LEAF}/tools/aidlc-utility.ts select-plugins ${[...names].sort().join(",")}`;
 }
 
 function refreshSkillGeneratedRegion(
@@ -222,6 +276,13 @@ if (!existsSync(PLUGIN_ROOT)) {
   recordDrop(`plugin root does not exist: "${PLUGIN_ROOT}" — check the AIDLC_PLUGIN_ROOT path`);
   await flushDrops();
   process.exit(0);
+}
+
+if (!pluginEnabledBySelection()) {
+  recordDrop(
+    `plugin "${PLUGIN_NAME}" composed but is not enabled by tools/data/harness.json; run \`${selectCommandForPlugin()}\` to expose its stages, scopes, and runners`,
+    "advisory",
+  );
 }
 
 // --- helpers ---------------------------------------------------------------
@@ -703,16 +764,21 @@ try {
   }
   const pluginSlugs = pluginStages.map((s) => s.slug);
   const graphPath = join(HARNESS_DIR, "tools", "data", "stage-graph.json");
-  const readGraph = (): Array<{ slug?: string; plugin?: string; phase?: string }> | null => {
+  const readGraph = (): Array<{ slug?: string; plugin?: string; phase?: string; enabled?: boolean }> | null => {
     try {
-      return JSON.parse(readFileSync(graphPath, "utf-8")) as Array<{ slug?: string; plugin?: string; phase?: string }>;
+      return JSON.parse(readFileSync(graphPath, "utf-8")) as Array<{ slug?: string; plugin?: string; phase?: string; enabled?: boolean }>;
     } catch { return null; }
   };
   const graphMissingPluginStage = (() => {
+    if (!pluginEnabledBySelection()) return false;
     if (pluginSlugs.length === 0) return false;
     const graph = readGraph();
     if (graph === null) return true; // unreadable/absent graph — compile
-    const present = new Set(graph.map((s) => s.slug));
+    const present = new Set(
+      graph
+        .filter((s) => s.enabled !== false)
+        .map((s) => s.slug),
+    );
     return pluginSlugs.some((s) => !present.has(s));
   })();
   const skillsDirExists = existsSync(SKILLS_DIR);
@@ -726,6 +792,7 @@ try {
       pluginSlugSet.has(s.slug) &&
       typeof s.plugin === "string" &&
       s.plugin.length > 0 &&
+      s.enabled !== false &&
       s.phase !== "initialization" &&
       !existsSync(join(SKILLS_DIR, s.slug, "SKILL.md"))
     );

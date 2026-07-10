@@ -29,6 +29,7 @@ All AI-DLC commands start with the orchestrator invocation. This chapter is a co
 | `/aidlc --test-strategy <level>` | Override test strategy (minimal, standard, comprehensive) |
 | `/aidlc --version` | Print the framework version |
 | `/aidlc --help` | Display usage information |
+| `bun .claude/tools/aidlc-utility.ts select-plugins [names]` | Show or set the enabled plugin list for this install |
 
 ---
 
@@ -73,7 +74,7 @@ flowchart TD
 
 ### `/aidlc [scope]` — Start with explicit scope
 
-Start a new workflow with one of the 9 named scopes.
+Start a new workflow with one of the enabled scopes. Core ships 9 named scopes; plugins can add more, and `select-plugins` can hide disabled plugin/core scopes from runtime.
 
 **Syntax:**
 
@@ -231,7 +232,8 @@ Validate that all of this implementation's prerequisites, configuration, and sta
 | Cycle detection | `stage-graph.json` has no cycles |
 | Orphan stage files | Every slug in the graph has a matching `<phase>/<slug>.md` on disk |
 | Uncompiled stage files | Surfaces any stage `.md` on disk whose slug is not in the compiled graph, it will not execute until you run `aidlc-graph.ts compile` (advisory, never fails) |
-| Scope validation | All 9 scopes (from `.claude/scopes/*.md`) walk cleanly (advisories for scope-truncation gaps are expected) |
+| Plugin selection | Enabled plugin list, per-plugin enabled-stage counts, full-graph `enabled:false` flag agreement, and torn-selection recovery hints |
+| Scope validation | All enabled scopes (from `.claude/scopes/*.md` after plugin selection) walk cleanly (advisories for scope-truncation gaps are expected) |
 | Schema validation | Every stage's YAML frontmatter passes `validateStageFrontmatter` |
 | Graph references | Every `consumes[].artifact` and `requires_stage[]` target resolves |
 | Keyword overlap | No keyword is claimed by >1 scope |
@@ -259,6 +261,7 @@ Validate that all of this implementation's prerequisites, configuration, and sta
 ✓ Cycle detection: 0 cycles
 ✓ Orphan stage files: 32 graph entries all have files
 ✓ Uncompiled stage files: 0 stage files missing from the compiled graph
+✓ Enabled plugins: all enabled (no selection); enabled stage counts: aidlc=32
 ✓ Scope validation: 9 scopes valid (29 advisories)
 ✓ Schema validation: 32/32 stages valid
 ✓ Graph references: 122 artifacts + edges resolved
@@ -438,6 +441,17 @@ Run any of them with `bun .claude/tools/<tool>.ts <subcommand>`.
 ### `aidlc-utility detect` - read-only workspace scan
 
 `bun .claude/tools/aidlc-utility.ts detect --json` prints the workspace scan (project type, languages, frameworks, build system, and a `submodules` array of any declared git submodules with their initialized state) plus the resolved scopes dir and scope-grid path. Pure read; the composer runs it to learn where scope data lives on the current harness.
+
+### `aidlc-utility select-plugins` - install plugin selection
+
+`bun .claude/tools/aidlc-utility.ts select-plugins` prints the current selection (`all enabled (no selection)` when the `plugins` key is absent) and the known plugin names. Pass a comma-separated list to set it:
+
+```bash
+bun .claude/tools/aidlc-utility.ts select-plugins test-pro
+bun .claude/tools/aidlc-utility.ts select-plugins aidlc,test-pro
+```
+
+The command validates names, writes `.claude/tools/data/harness.json`, recompiles the full graph with disabled nodes marked `enabled:false`, prunes/regenerates stage and scope runners, and refreshes the generated SKILL.md scope/stage tables in one transaction. `aidlc` is core; omitting it disables core surfaces except the always-on Initialization stages.
 
 ### `aidlc-utility recompose` - in-flight plan flips
 

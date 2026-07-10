@@ -46,17 +46,22 @@ import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   _resetAgentsForTests,
+  _resetHarnessDataForTests,
   _resetScopeMappingForTests,
+  _resetStageGraphForTests,
   activeSpace,
   type AgentMetadata,
   errorMessage,
   gridCostSummary,
   loadAgents,
   loadScopeMapping,
+  loadScopeMetadata,
   harnessDir,
   PHASES,
   type Phase,
   loadStageGraph,
+  loadStageGraphAll,
+  pluginsEnabled,
   type ScopeCostSummary,
   mustGet,
   mustPop,
@@ -122,6 +127,7 @@ export interface SensorResolution {
 // extended shape.
 export interface GraphStage extends StageEntry {
   plugin?: string;
+  enabled?: false;
   condition?: string;
   produces: string[];
   // optional_produces - artifacts the stage MAY write per unit (marked
@@ -337,6 +343,8 @@ export function __resetGraphCache(): void {
   _graph = null;
   _artifactsRegistry = null;
   _scopeGrid = null;
+  _resetHarnessDataForTests();
+  _resetStageGraphForTests();
   _resetAgentsForTests();
   _resetScopeMappingForTests();
 }
@@ -380,6 +388,7 @@ const FIELD_ORDER = [
   "number",
   "name",
   "plugin",
+  "enabled",
   "phase",
   "execution",
   "condition",
@@ -1257,16 +1266,27 @@ export interface ScopeGrid {
  *  Slug rows = stage order (the array passed in — already numeric-sorted
  *  by compileStageGraph). A stage that names a scope is EXECUTE under it;
  *  every other scope/stage cell is SKIP. Pure — no I/O. */
-export function transposeScopeGrid(stages: GraphStage[]): ScopeGrid {
+export function transposeScopeGrid(
+  stages: GraphStage[],
+  allowedScopes?: ReadonlySet<string>,
+): ScopeGrid {
   const scopeNames = new Set<string>();
   for (const s of stages) {
-    for (const name of s.scopes ?? []) scopeNames.add(name);
+    for (const name of s.scopes ?? []) {
+      if (allowedScopes === undefined || allowedScopes.has(name)) scopeNames.add(name);
+    }
+  }
+  if (allowedScopes !== undefined) {
+    for (const name of allowedScopes) scopeNames.add(name);
   }
   const grid: ScopeGrid = {};
   for (const scope of [...scopeNames].sort()) {
     const stagesMap: Record<string, "EXECUTE" | "SKIP"> = {};
     for (const s of stages) {
-      stagesMap[s.slug] = (s.scopes ?? []).includes(scope) ? "EXECUTE" : "SKIP";
+      stagesMap[s.slug] =
+        s.phase === "initialization" || (s.scopes ?? []).includes(scope)
+          ? "EXECUTE"
+          : "SKIP";
     }
     grid[scope] = { stages: stagesMap };
   }
@@ -1316,6 +1336,20 @@ export function mergeComposedScopes(fresh: ScopeGrid, onDiskJson: string | null)
   return sorted;
 }
 
+function filterScopeGrid(grid: ScopeGrid, allowedScopes: ReadonlySet<string> | null): ScopeGrid {
+  if (allowedScopes === null) return grid;
+  const filtered: ScopeGrid = {};
+  for (const scope of Object.keys(grid).sort()) {
+    if (allowedScopes.has(scope)) filtered[scope] = grid[scope];
+  }
+  return filtered;
+}
+
+function enabledScopeNames(): ReadonlySet<string> | null {
+  if (pluginsEnabled() === null) return null;
+  return new Set(Object.keys(loadScopeMetadata()).sort());
+}
+
 /** Parse a numeric stage identifier like "3.5" into a tuple [phase, index]
  *  for total-ordering comparison. Returns negative, zero, or positive. */
 export function numericStageOrder(a: string, b: string): number {
@@ -1349,7 +1383,7 @@ export function stageGraphDrift(): {
   uncompiledStages: string[];
   graphCount: number;
 } {
-  const graphSlugs = new Set(loadStageGraph().map((s) => s.slug));
+  const graphSlugs = new Set(loadStageGraphAll().map((s) => s.slug));
   const diskSlugs = new Set<string>();
   const root = stagesDir();
   for (const phase of PHASES) {
@@ -1377,6 +1411,54 @@ function titleCaseSlug(slug: string): string {
     .join(" ");
 }
 
+function stagePluginOwner(stage: Pick<GraphStage, "plugin">): string {
+  return stage.plugin ?? "aidlc";
+}
+
+function stageEnabledBySelection(stage: GraphStage): boolean {
+  if (stage.phase === "initialization") return true;
+  const selected = pluginsEnabled();
+  return selected === null || selected.has(stagePluginOwner(stage));
+}
+
+function applyPluginSelection(stages: GraphStage[]): void {
+  for (const stage of stages) {
+    delete stage.enabled;
+    if (!stageEnabledBySelection(stage)) stage.enabled = false;
+  }
+}
+
+function validateSelectionClosure(stages: GraphStage[]): void {
+  const producersByArtifact = new Map<string, GraphStage[]>();
+  for (const stage of stages) {
+    for (const artifact of [...(stage.produces ?? []), ...(stage.optional_produces ?? [])]) {
+      const producers = producersByArtifact.get(artifact) ?? [];
+      producers.push(stage);
+      producersByArtifact.set(artifact, producers);
+    }
+  }
+
+  for (const stage of stages.filter((s) => s.enabled !== false)) {
+    for (const consume of stage.consumes ?? []) {
+      if (!consume.required) continue;
+      const producers = producersByArtifact.get(consume.artifact) ?? [];
+      if (producers.length === 0) continue;
+      const enabledProducers = producers.filter((p) => p.enabled !== false);
+      if (enabledProducers.length > 0) continue;
+      const producerList = producers
+        .map((p) => `${p.slug} (${stagePluginOwner(p)})`)
+        .sort()
+        .join(", ");
+      const disabledPlugins = [...new Set(producers.map(stagePluginOwner))].sort();
+      throw new Error(
+        `Plugin selection closure failed: enabled stage "${stage.slug}" consumes required artifact "${consume.artifact}", ` +
+          `but its only producer(s) are disabled: ${producerList}. ` +
+          `Enable plugin(s) ${disabledPlugins.join(", ")} or disable the consuming stage.`
+      );
+    }
+  }
+}
+
 /** Regenerate stage-graph.json from the 31 YAML stage files.
  *  Bootstraps number + name from the existing JSON (the "computed
  *  not authored" contract — see stage-definition.md). Asserts the
@@ -1393,7 +1475,7 @@ export function compileStageGraph(): {
   // Harvest number + name mappings from existing JSON. A slug already in
   // the JSON keeps its pinned number + name (the "computed not authored,
   // stable thereafter" contract); a NEW slug is auto-seeded below.
-  const existing = loadStageGraph();
+  const existing = loadStageGraphAll();
   const numberBySlug = new Map(existing.map((s) => [s.slug, s.number]));
   const nameBySlug = new Map(existing.map((s) => [s.slug, s.name]));
 
@@ -1536,6 +1618,9 @@ export function compileStageGraph(): {
     stage.sensors_applicable = resolveSensorsForStage(stage, sensorsById);
   }
 
+  applyPluginSelection(stages);
+  validateSelectionClosure(stages);
+
   // Edge-local invariant: for every edge A in B.requires_stage,
   // numericOrder(A) < numericOrder(B). Topological sort is non-unique
   // in the presence of fan-out (Construction's NFR and functional-
@@ -1575,7 +1660,16 @@ export function compileStageGraph(): {
   return {
     json: canonicalStageGraphJson(stages),
     gridJson: canonicalScopeGridJson(
-      mergeComposedScopes(transposeScopeGrid(stages), onDiskGrid),
+      filterScopeGrid(
+        mergeComposedScopes(
+          transposeScopeGrid(
+            stages.filter((s) => s.enabled !== false),
+            enabledScopeNames() ?? undefined,
+          ),
+          onDiskGrid,
+        ),
+        enabledScopeNames(),
+      ),
     ),
     stages,
   };

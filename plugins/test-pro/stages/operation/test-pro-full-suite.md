@@ -14,9 +14,9 @@ produces:
   - test-pro-edge-api-report
 consumes:
   - artifact: deployment-log
-    required: true
+    required: false
   - artifact: test-pro-regression-suite
-    required: true
+    required: false
   - artifact: test-pro-integration-test-results
     required: false
 requires_stage:

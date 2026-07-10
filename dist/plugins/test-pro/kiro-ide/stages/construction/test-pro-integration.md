@@ -16,7 +16,7 @@ produces:
   - test-pro-cross-unit-contract-matrix
 consumes:
   - artifact: build-and-test-summary
-    required: true
+    required: false
   - artifact: test-pro-regression-suite
     required: false
 requires_stage:

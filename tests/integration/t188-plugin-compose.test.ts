@@ -178,6 +178,32 @@ describe("t188 plugin compose — emit + compose the contribution seam", () => {
       .toBe(coreRunnerBefore);
   });
 
+  test("compose does not auto-enable a plugin excluded by an existing selection", () => {
+    const selectedProj = mkdtempSync(join(tmp, "selection-advisory-"));
+    cpSync(CLAUDE_DIST, join(selectedProj, ".claude"), { recursive: true });
+    const harnessJson = join(selectedProj, ".claude", "tools", "data", "harness.json");
+    const harness = JSON.parse(readFileSync(harnessJson, "utf-8"));
+    harness.plugins = ["aidlc"];
+    writeFileSync(harnessJson, `${JSON.stringify(harness, null, 2)}\n`);
+
+    const compose = spawnSync(BUN, [join(pluginBuilt, "hooks", "compose.ts")], {
+      cwd: selectedProj,
+      encoding: "utf-8",
+      timeout: TIMEOUT_MS - 5_000,
+      env: {
+        ...process.env,
+        CLAUDE_PLUGIN_ROOT: pluginBuilt,
+        CLAUDE_PROJECT_DIR: selectedProj,
+        AIDLC_HARNESS_DIR: ".claude",
+      },
+    });
+    expect(compose.status).toBe(0);
+    expect(existsSync(join(selectedProj, ".claude", "aidlc-common", "stages", "construction", "test-pro-integration.md"))).toBe(true);
+    expect(stage(selectedProj, "test-pro-integration")?.enabled).toBe(false);
+    expect(existsSync(join(selectedProj, ".claude", "skills", "test-pro-integration", "SKILL.md"))).toBe(false);
+    expect(hookDrops(selectedProj)).toContain("select-plugins aidlc,test-pro");
+  });
+
   test("composed plugin stage bodies are not empty", () => {
     for (const [phase, slug] of [
       ["construction", "test-pro-integration"],

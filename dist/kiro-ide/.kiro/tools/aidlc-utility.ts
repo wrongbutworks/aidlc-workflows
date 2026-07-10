@@ -13,7 +13,6 @@ import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { appendAuditEntry, appendAuditEntryUnlocked } from "./aidlc-audit.ts";
 import {
-  artifactsRegistry,
   findCycles,
   frameworkMemorySeedDir,
   loadGraph,
@@ -57,6 +56,8 @@ import {
   loadAgents,
   loadScopeMapping,
   loadStageGraph,
+  loadStageGraphAll,
+  loadScopeMetadataAll,
   MERGE_SUCCEEDED_TAG_REGEX,
   migrateFlatLayout,
   nextInScopeStage,
@@ -82,6 +83,9 @@ import {
   setStageSuffix,
   scopeGridPath,
   scopesDir,
+  harnessDataPath,
+  pluginsEnabled,
+  selectionAwareDefaultScope,
   scalarField,
   stagesInScope,
   stateFilePath,
@@ -95,6 +99,9 @@ import {
   writeStateFile,
   harnessDir,
   rulesSubdir,
+  _resetHarnessDataForTests,
+  _resetScopeMappingForTests,
+  _resetStageGraphForTests,
 } from "./aidlc-lib.ts";
 import { validateStageFrontmatter } from "./aidlc-stage-schema.ts";
 import { AIDLC_VERSION } from "./aidlc-version.ts";
@@ -181,6 +188,7 @@ Utilities:
   space <name>      Switch the active space (team)
   space-create <name>  Create a new space (team) seeded from the framework baseline
   codekb-path       Print the deterministic per-repo codekb directory (read-only)
+  select-plugins [names]  Show or set enabled plugins (comma-separated names)
   --doctor          Run health check on hooks, settings, and directory structure
   --stage <id>      Jump to a specific stage (by slug or number, e.g., code-generation or 3.5)
   --phase <name>    Jump to the first in-scope stage of a phase (e.g., construction or 3)
@@ -198,6 +206,7 @@ Examples:
   /aidlc feature                                Start a feature workflow
   /aidlc Fix the login timeout bug              Auto-detected as bugfix scope
   /aidlc compose "harden the deploy pipeline"   Composer proposes a tailored plan
+  bun .claude/tools/aidlc-utility.ts select-plugins aidlc,test-pro  Enable core + test-pro
   /aidlc                                        Resume or begin
   /aidlc --stage code-generation                Jump to code-generation stage
   /aidlc --phase construction --scope bugfix    Jump to construction with bugfix scope
@@ -208,6 +217,8 @@ Examples:
 /** Exported for t67 unit tests. */
 export function renderHelpText(): string {
   const mapping = loadScopeMapping();
+  const defaultResolution = selectionAwareDefaultScope();
+  const defaultScope = defaultResolution.error ? "" : defaultResolution.scope;
   const scopeLines = [...validScopes()].map((name) => {
     const def = mapping[name];
     const execute = Object.values(def.stages).filter((v) => v === "EXECUTE")
@@ -218,7 +229,7 @@ export function renderHelpText(): string {
       ? `, ${def.testStrategy.toLowerCase()} test strategy`
       : "";
     const desc = def.description ? ` — ${def.description}` : "";
-    const defaultMarker = name === "feature" ? " (default)" : "";
+    const defaultMarker = name === defaultScope ? " (default)" : "";
     const countStr =
       execute === total ? `All ${total} stages` : `${execute} of ${total} stages`;
     return `  ${name.padEnd(18)}${countStr}, ${depth} depth${ts}${defaultMarker}${desc}`;
@@ -238,6 +249,194 @@ function handleHelp(): void {
 
 function handleVersion(): void {
   process.stdout.write(`aidlc ${AIDLC_VERSION}\n`);
+}
+
+// ---------------------------------------------------------------------------
+// select-plugins
+// ---------------------------------------------------------------------------
+
+interface FileSnapshot {
+  path: string;
+  exists: boolean;
+  bytes: string;
+}
+
+function snapshotFile(path: string): FileSnapshot {
+  return {
+    path,
+    exists: existsSync(path),
+    bytes: existsSync(path) ? readFileSync(path, "utf-8") : "",
+  };
+}
+
+function restoreSnapshot(snapshot: FileSnapshot): void {
+  if (snapshot.exists) {
+    mkdirSync(dirname(snapshot.path), { recursive: true });
+    writeFileSync(snapshot.path, snapshot.bytes, "utf-8");
+  } else if (existsSync(snapshot.path)) {
+    rmSync(snapshot.path, { force: true });
+  }
+}
+
+function resetSelectionSensitiveCaches(): void {
+  _resetHarnessDataForTests();
+  _resetStageGraphForTests();
+  _resetScopeMappingForTests();
+}
+
+function stageGraphDataPath(): string {
+  return join(TOOLS_DIR, "data", "stage-graph.json");
+}
+
+function knownPluginNames(): string[] {
+  const names = new Set<string>(["aidlc"]);
+  try {
+    for (const stage of loadStageGraphAll()) {
+      if (stage.plugin) names.add(stage.plugin);
+    }
+  } catch {
+    // Scope files still provide known plugin identities when the graph is stale.
+  }
+  for (const meta of Object.values(loadScopeMetadataAll())) {
+    names.add(meta.plugin ?? "aidlc");
+  }
+  return [...names].sort();
+}
+
+function selectionOwner(stage: Pick<StageEntry, "plugin">): string {
+  return stage.plugin ?? "aidlc";
+}
+
+function countOwner(stage: Pick<StageEntry, "plugin" | "phase">): string {
+  return stage.phase === "initialization" ? "bootstrap" : selectionOwner(stage);
+}
+
+function expectedEnabledBySelection(stage: Pick<StageEntry, "plugin" | "phase">): boolean {
+  if (stage.phase === "initialization") return true;
+  const selected = pluginsEnabled();
+  return selected === null || selected.has(selectionOwner(stage));
+}
+
+function parsePluginSelectionArgs(positional: string[]): { names: string[]; hasEmpty: boolean } {
+  const parts = positional.slice(1).join(",").split(",").map((s) => s.trim());
+  return {
+    names: parts.filter((s) => s.length > 0),
+    hasEmpty: parts.some((s) => s.length === 0),
+  };
+}
+
+function readHarnessDataObject(): Record<string, unknown> {
+  try {
+    const parsed = JSON.parse(readFileSync(harnessDataPath(), "utf-8"));
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      return parsed as Record<string, unknown>;
+    }
+  } catch {
+    // Reconstruct a legacy/missing file from runtime defaults.
+  }
+  return { harnessDir: harnessDir(), rulesSubdir: rulesSubdir() };
+}
+
+function writePluginSelection(names: string[]): void {
+  const data = readHarnessDataObject();
+  data.plugins = names;
+  mkdirSync(dirname(harnessDataPath()), { recursive: true });
+  writeFileSync(harnessDataPath(), `${JSON.stringify(data, null, 2)}\n`, "utf-8");
+  resetSelectionSensitiveCaches();
+}
+
+function runBunTool(projectDir: string, rel: string, args: string[], label: string): void {
+  const result = Bun.spawnSync({
+    cmd: [process.execPath, join(TOOLS_DIR, rel), ...args],
+    cwd: projectDir,
+    stdout: "pipe",
+    stderr: "pipe",
+    env: { ...process.env, AIDLC_HARNESS_DIR: harnessDir() },
+  });
+  if (result.exitCode !== 0) {
+    const stdout = new TextDecoder().decode(result.stdout).trim();
+    const stderr = new TextDecoder().decode(result.stderr).trim();
+    throw new Error(`${label} failed: ${(stderr || stdout || `exit ${result.exitCode}`).slice(0, 800)}`);
+  }
+}
+
+function replaceGeneratedRegion(beginMarker: string, endMarker: string, region: string): void {
+  const path = skillMdPath();
+  const before = readFileSync(path, "utf-8").replace(/\r\n/g, "\n");
+  const begin = before.indexOf(beginMarker);
+  const end = before.indexOf(endMarker, begin);
+  if (begin === -1 || end === -1) {
+    throw new Error(`SKILL.md at ${path} is missing generated-region markers.`);
+  }
+  const after = before.slice(0, begin) + region + before.slice(end + endMarker.length);
+  if (after !== before) writeFileSync(path, after, "utf-8");
+}
+
+function regenerateSelectionSurfaces(projectDir: string): void {
+  runBunTool(projectDir, "aidlc-graph.ts", ["compile"], "aidlc-graph compile");
+  resetSelectionSensitiveCaches();
+  runBunTool(projectDir, "aidlc-runner-gen.ts", ["write"], "aidlc-runner-gen write");
+  runBunTool(projectDir, "aidlc-runner-gen.ts", ["scopes"], "aidlc-runner-gen scopes");
+  resetSelectionSensitiveCaches();
+  replaceGeneratedRegion(
+    STAGE_TABLE_BEGIN,
+    STAGE_TABLE_END,
+    canonicalStageTableRegion(renderStageTable()),
+  );
+  replaceGeneratedRegion(
+    SCOPE_TABLE_BEGIN,
+    SCOPE_TABLE_END,
+    canonicalScopeTableRegion(renderScopeTable()),
+  );
+}
+
+function handleSelectPlugins(projectDir: string, positional: string[]): void {
+  if (positional.length === 1) {
+    const current = pluginsEnabled();
+    const selection = current === null ? "all enabled (no selection)" : [...current].sort().join(", ");
+    process.stdout.write(
+      `Current plugin selection: ${selection}\nKnown plugins: ${knownPluginNames().join(", ")}\n`,
+    );
+    return;
+  }
+
+  const parsedSelection = parsePluginSelectionArgs(positional);
+  if (parsedSelection.hasEmpty || parsedSelection.names.length === 0) {
+    die("select-plugins requires at least one non-empty plugin name, or no arguments to print the current selection.");
+  }
+  const known = knownPluginNames();
+  const knownSet = new Set(known);
+  const unknown = parsedSelection.names.filter((name) => !knownSet.has(name));
+  if (unknown.length > 0) {
+    die(`Unknown plugin name(s): ${unknown.join(", ")}. Valid plugins: ${known.join(", ")}.`);
+  }
+  const names = [...new Set(parsedSelection.names)].sort();
+
+  const snapshots = [
+    snapshotFile(harnessDataPath()),
+    snapshotFile(stageGraphDataPath()),
+    snapshotFile(scopeGridPath()),
+  ];
+
+  try {
+    writePluginSelection(names);
+    regenerateSelectionSurfaces(projectDir);
+    process.stdout.write(`Enabled plugins: ${names.join(", ")}\n`);
+  } catch (err) {
+    const original = errorMessage(err);
+    let recoveryMessage = "";
+    try {
+      for (const snapshot of snapshots) restoreSnapshot(snapshot);
+      resetSelectionSensitiveCaches();
+      regenerateSelectionSurfaces(projectDir);
+      recoveryMessage =
+        " Restored harness.json, stage-graph.json, and scope-grid.json, then re-ran the regeneration chain against the restored selection.";
+    } catch (recoveryErr) {
+      recoveryMessage =
+        ` Restore was attempted, but regeneration against the restored selection also failed: ${errorMessage(recoveryErr)}.`;
+    }
+    die(`select-plugins failed: ${original}.${recoveryMessage}`);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -673,6 +872,96 @@ function handleDoctor(projectDir: string): void {
       pass: false,
       label: `AWS_AIDLC_DEFAULT_SCOPE=${envScope} (invalid)`,
       fix: `valid values: ${[...validScopes()].join(", ")}`,
+    });
+  }
+
+  // 4c. Plugin selection — doctor is a full-graph consumer. Runtime consumers
+  // read the filtered graph, but doctor must verify the persisted enabled flags
+  // still agree with tools/data/harness.json and that enabled stage files were
+  // not lost by a torn select-plugins run.
+  try {
+    const selected = pluginsEnabled();
+    const graphAll = loadStageGraphAll();
+    const enabledStages = graphAll.filter((s) => s.enabled !== false);
+    const counts = new Map<string, number>();
+    for (const stage of enabledStages) {
+      const owner = countOwner(stage);
+      counts.set(owner, (counts.get(owner) ?? 0) + 1);
+    }
+    const countText = [...counts.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([owner, count]) => `${owner}=${count}`)
+      .join(", ");
+    results.push({
+      pass: true,
+      label:
+        selected === null
+          ? `Enabled plugins: all enabled (no selection); enabled stage counts: ${countText}`
+          : `Enabled plugins: ${[...selected].sort().join(", ")}; enabled stage counts: ${countText}`,
+    });
+
+    const disagreements: string[] = [];
+    for (const stage of graphAll) {
+      const expected = expectedEnabledBySelection(stage);
+      const actual = stage.enabled !== false;
+      if (expected !== actual) {
+        disagreements.push(
+          `${stage.slug}: expected ${expected ? "enabled" : "disabled"}, graph is ${actual ? "enabled" : "disabled"}`,
+        );
+      }
+    }
+    results.push({
+      pass: disagreements.length === 0,
+      label: disagreements.length === 0
+        ? "Plugin selection flags: harness.json agrees with stage-graph.json"
+        : `Plugin selection flags: ${disagreements.length} disagreement(s)`,
+      fix: disagreements.length > 0
+        ? `${disagreements.join("; ")} - run \`bun ${harnessDir()}/tools/aidlc-utility.ts select-plugins ${
+            selected === null ? knownPluginNames().join(",") : [...selected].sort().join(",")
+          }\` to recover`
+        : undefined,
+    });
+
+    const graphSlugs = new Set(graphAll.map((s) => s.slug));
+    const missingEnabled: string[] = [];
+    const stagesRoot = join(TOOLS_DIR, "..", "aidlc-common", "stages");
+    for (const phase of PHASES) {
+      const dir = join(stagesRoot, phase);
+      if (!existsSync(dir)) continue;
+      for (const f of readdirSync(dir).filter((name) => name.endsWith(".md")).sort()) {
+        const path = join(dir, f);
+        try {
+          const parsed = parseStageFrontmatter(readFileSync(path, "utf-8")) as Record<string, unknown>;
+          const slug = typeof parsed.slug === "string" ? parsed.slug : f.replace(/\.md$/, "");
+          const plugin = typeof parsed.plugin === "string" ? parsed.plugin : undefined;
+          const stagePhase = typeof parsed.phase === "string" ? parsed.phase : phase;
+          if (
+            expectedEnabledBySelection({ plugin, phase: stagePhase }) &&
+            !graphSlugs.has(slug)
+          ) {
+            missingEnabled.push(`${slug} (${path})`);
+          }
+        } catch {
+          // Schema validation below owns malformed stage frontmatter.
+        }
+      }
+    }
+    results.push({
+      pass: missingEnabled.length === 0,
+      label: missingEnabled.length === 0
+        ? "Enabled stage compile coverage: every enabled stage file is in the full graph"
+        : `Enabled stage compile coverage: ${missingEnabled.length} enabled stage file(s) missing from the full graph`,
+      fix: missingEnabled.length > 0
+        ? `${missingEnabled.join("; ")} - recover with \`bun ${harnessDir()}/tools/aidlc-utility.ts select-plugins ${
+            selected === null ? knownPluginNames().join(",") : [...selected].sort().join(",")
+          }\``
+        : undefined,
+    });
+  } catch (e) {
+    results.push({
+      pass: false,
+      label: "Plugin selection: check failed",
+      fix: errorMessage(e),
     });
   }
 
@@ -1615,7 +1904,7 @@ function handleDoctor(projectDir: string): void {
   // "N/N valid" when files are missing (that's the orphan-files check's job).
   try {
     const stagesDir = join(TOOLS_DIR, "..", "aidlc-common", "stages");
-    const graph = loadStageGraph();
+    const graph = loadStageGraphAll();
     const agentSlugs = loadAgents().map((a) => a.slug);
     const schemaFails: { slug: string; errors: string[] }[] = [];
     let attempted = 0;
@@ -1662,9 +1951,13 @@ function handleDoctor(projectDir: string): void {
   // must resolve to something real. Catches typos that pure schema-lint
   // and scope-walk both miss.
   try {
-    const graph = loadStageGraph();
+    const graph = loadStageGraphAll();
     const allSlugs = new Set(graph.map((s) => s.slug));
-    const allArtifacts = artifactsRegistry();
+    const allArtifacts = new Set<string>();
+    for (const stage of graph) {
+      for (const artifact of stage.produces ?? []) allArtifacts.add(artifact);
+      for (const artifact of stage.optional_produces ?? []) allArtifacts.add(artifact);
+    }
     const refFails: string[] = [];
     for (const stage of graph) {
       for (const c of stage.consumes ?? []) {
@@ -3883,9 +4176,9 @@ function handleSetStatus(projectDir: string, flags: Record<string, string>): voi
 // helper resolves the scope using word-boundary matching (so "debug"
 // does not match "bug"),
 // alphabetical iteration over scopes (so first-match-wins is
-// deterministic), and a ">5 word" heuristic that falls back to `feature`
-// when the input looks like a project description that happens to
-// contain a keyword.
+// deterministic), and a ">5 word" heuristic that falls back to the
+// selection-aware default scope when the input looks like a project description
+// that happens to contain a keyword.
 //
 // Exported for t67 unit tests; not a stable public API.
 
@@ -3919,10 +4212,13 @@ export function inferScopeFromText(input: string): InferResult {
   }
 
   // Disambiguation: keyword + >5 words → likely a project description
-  // containing the keyword incidentally. Default to feature. Also:
-  // no matches at all → feature as well.
+  // containing the keyword incidentally. Also: no matches at all → default.
   if (allMatches.length === 0 || wordCount > 5) {
-    return { scope: "feature", source: "freeform", matches: allMatches };
+    return {
+      scope: selectionAwareDefaultScope().scope,
+      source: "freeform",
+      matches: allMatches,
+    };
   }
 
   // First alphabetical match wins (deterministic across calls).
@@ -4353,6 +4649,9 @@ function main(): void {
     case "detect":
       handleDetect(projectDir, flags);
       break;
+    case "select-plugins":
+      handleSelectPlugins(projectDir, positional);
+      break;
     // init / state-init — deprecated aliases kept for back-compat only (not in
     // usage/help). The user-facing `/aidlc --init` is retired in P4: the
     // workspace shell ships in dist/ (SEED) and the engine auto-births the
@@ -4393,7 +4692,7 @@ function main(): void {
       break;
     default:
       die(
-        `Usage: aidlc-utility <help|version|status|doctor|intent-birth|intent|space|space-create|codekb-path|detect|recompose|scope-change|config-change|set-status|detect-scope|resolve-env-scope|scope-table|stage-table> [--project-dir <path>] [--scope <scope>] [--json]`
+        `Usage: aidlc-utility <help|version|status|doctor|intent-birth|intent|space|space-create|codekb-path|detect|select-plugins|recompose|scope-change|config-change|set-status|detect-scope|resolve-env-scope|scope-table|stage-table> [--project-dir <path>] [--scope <scope>] [--json]`
       );
   }
 }
