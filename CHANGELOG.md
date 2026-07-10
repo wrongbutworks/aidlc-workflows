@@ -2,11 +2,26 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.3.4] - 2026-07-10
+
+Completes the plugin mechanism with **install-time plugin selection** and the full plugin content surface, proven at scale in a customer pilot. Plugins add, the install selects: a plugin can now ship scopes, agent personas, and knowledge alongside stages, every stage-enumerating surface is generated from the compiled graph, and a new `select-plugins` command lets an install choose which plugins' content its users see (core is the implicit `aidlc` plugin and can itself be deselected; a plugin-only install shows only that plugin's commands and scopes). The ownership frontmatter field is renamed from `bundle:` to `plugin:` (deprecated read-side alias kept). **Upgrade:** re-copy your `dist/<harness>/` shell and re-run any installed plugin's compose hook; existing installs without a selection are unaffected (an absent `plugins` key enables everything, and the shipped trees are byte-identical on core surfaces).
+
+* `bundle:` frontmatter renamed to `plugin:`; `bundle:` remains a deprecated read-side alias (both present with different values is a validation error). Nothing writes `bundle:` anymore; the word is reserved for a possible future collection-of-plugins concept.
+* Plugins can ship `scopes/`, `agents/`, and `knowledge/` - projected by the packager and composed additively (no-clobber, collision drop-logged) into the install. Plugin scope files are `<plugin>-<name>.md`, agent files `<plugin>-<role>-agent.md`. A plugin's `memory/` tree stays deferred.
+* `plugin:` ownership carries through compile onto stage-graph.json nodes. Invariants: a plugin-owned slug must start with `<plugin>-`; `plugin: aidlc` is rejected; a stage file's name stem must match its slug; duplicate scope names and agent slugs across files fail loudly naming both files.
+* Runner skills are plugin-namespaced: a plugin-owned stage or scope gets a runner named by its own slug (`/test-pro-integration`), core keeps `aidlc-<slug>`. The scope-runner default batch is now data (`runner: true` scope frontmatter), not a code constant. The compose hook regenerates runners and the SKILL.md generated tables after recompile, so composed stages are typeable and visible immediately.
+* New `select-plugins <name>[,<name>...]` utility verb: validates names, writes the selection to `tools/data/harness.json`, recompiles, and regenerates every generated surface in one transactional step (snapshot + rollback on failure - no torn installs). Stage numbers are selection-stable. A closure guard fails a selection that leaves an enabled stage consuming a required artifact whose only producers are disabled, naming the plugin to enable. `/aidlc --doctor` reports the selection and hard-fails on selection/graph disagreement.
+* The SKILL.md Stage Graph table is now generator output (`stage-table` verb, BEGIN/END markers, `--check` drift guard), and `state-template.md` documents the state-file contract instead of hand-enumerating stages - both surfaces follow the filtered graph under a selection.
+* The walking-skeleton ceremony reads a new `skeleton: on|off` scope frontmatter field instead of a hardcoded core-scope name set, so plugin scopes are first-class in the ceremony. `AWS_AIDLC_DEFAULT_SCOPE` naming a disabled scope now falls back to the sole enabled plugin's first scope instead of dying, so a plugin-only install starts from plain `/aidlc`.
+* Plugin stages must have a non-empty body after the frontmatter fence - a frontmatter-only stage compiles and routes while being behaviorally dead; it now fails the plugin content tests and the compose guard.
+* Breaking for CI/scripts: none.
+
 ## [2.3.3] - 2026-07-10
 
 `scope-change` now refuses to run under autonomous Construction, closing the gap its sibling `recompose` closed in 2.2.8: both verbs re-shape the live plan's EXECUTE/SKIP stage inclusion, and an unattended autonomous run has no human at the gate to approve the new shape. Previously the "never re-shape the plan under autonomy" rule was engine-enforced for `recompose` but prose-only for `scope-change`. **Upgrade:** re-copy your `dist/<harness>/` shell into the project.
 
 * `scope-change` (and `/aidlc --scope <name>` on a running workflow) exits non-zero with a clear error when `Construction Autonomy Mode` is `autonomous`, naming the remediation (`aidlc-bolt set-autonomy --mode gated`, or let the swarm finish). Gated and unset modes proceed exactly as before; starting a fresh workflow with `--scope` is unaffected.
+
 ## [2.3.2] - 2026-07-10
 
 `/aidlc --doctor` now surfaces recorded hook drops. Hooks fail open by design - an audit-emission failure or a swallowed error must never break your tool call - and each such swallow is recorded to `aidlc/.../.aidlc-hooks-health/<hook>.drops`, written specifically for doctor to surface. Doctor never read those files, so the silent-failure telemetry was invisible. It now reports them as an advisory row. **Upgrade:** re-copy your `dist/<harness>/` shell into the project.
